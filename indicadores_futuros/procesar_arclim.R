@@ -30,7 +30,7 @@ procesar_variable_comuna <- function(nombre_variable, codigo_comuna, modelo) {
     #modelo <- partes_nombre[[1]][3]   # El nombre del modelo está en la posición 3
     corrida <- substr(partes_nombre[[1]][4] , start = 2, stop = 2)# El nombre del corrida está en la posición 4
     
-    if(modelo == partes_nombre[[1]][3]){
+    if(modelo == partes_nombre[[1]][3] || modelo == "Todos"){
     print(paste0("Procesando archivo de datos : ", archivo))
     # Leer el archivo CSV (usando "." como separador decimal)
     datos <- read.csv(archivo, sep = ",", dec = ".")
@@ -52,7 +52,7 @@ procesar_variable_comuna <- function(nombre_variable, codigo_comuna, modelo) {
       select(año, mes, dia, all_of(codigo_comuna)) %>%
       rename(valor = !!sym(codigo_comuna)) %>%  # Renombrar la columna de la comuna a "valor"
       mutate(
-        modelo = modelo,
+        modelo = partes_nombre[[1]][3],  # Usar el modelo del archivo
         corrida = corrida,
         variable = nombre_variable
       )
@@ -75,35 +75,36 @@ procesar_variable_comuna <- function(nombre_variable, codigo_comuna, modelo) {
 calculate_relative_values <- function(data, periodo_referencia_ini, periodo_referencia_fin, nombre_variable, modelo) {
   print(paste0("Comenzando a calcular valores de referencia de acuerdo al periodo histórico desde ",
         periodo_referencia_ini, " hasta ", periodo_referencia_fin))
+  
   # Step 1: Filter the dataframe based on 'nombre_variable' and optionally 'modelo'
-  if (modelo == "todos") {
+  if (modelo == "Todos") {
     filtered_data <- data %>%
-      filter(variable == nombre_variable)  %>% # Keep all models
-        group_by(corrida, modelo, año) %>% # Group by both corrida and modelo and año
-         summarise(year_mean_value = mean(valor, na.rm = TRUE)) %>%
-           ungroup()
+      filter(variable == nombre_variable) %>% # Keep all models
+      group_by(corrida, modelo, año) %>% # Group by both corrida and modelo and año
+      summarise(year_mean_value = mean(valor, na.rm = TRUE)) %>%
+      ungroup()
   } else {
     filtered_data <- data %>%
       filter(variable == nombre_variable & modelo == modelo) %>% # Filter by specific model
-       group_by(corrida, modelo, año) %>% # Group by both corrida and modelo and año
-        summarise(year_mean_value =mean(valor, na.rm = TRUE)) %>%
-         ungroup()
+      group_by(corrida, modelo, año) %>% # Group by both corrida and modelo and año
+      summarise(year_mean_value = mean(valor, na.rm = TRUE)) %>%
+      ungroup()
   }
   
   # Step 2: Calculate the mean value of 'valor' grouped by 'corrida' and 'modelo' for the reference period
   reference_means <- filtered_data %>%
     filter(año >= periodo_referencia_ini & año <= periodo_referencia_fin) %>% # Restrict to reference period
-    group_by(corrida, modelo) %>% # Group by both corrida and modelo and año
+    group_by(corrida, modelo) %>% # Group by both corrida and modelo
     summarise(reference_model_value = mean(year_mean_value, na.rm = TRUE)) %>%
     ungroup()
   
   # Step 3: Add a new column with the relative values
-  #se ocupa el valor absoluto del valor de referencia, de este modo
-  #positivo == aumento con respecto a ref.
+  # Se ocupa el valor absoluto del valor de referencia, de este modo
+  # positivo == aumento con respecto a ref.
   
   updated_data <- filtered_data %>%
-    left_join(reference_means, by = c("corrida", "modelo")) %>% # Join by corrida and modelo and año
-    mutate(valor_relativo_anual = (year_mean_value /abs(reference_model_value))) 
+    left_join(reference_means, by = c("corrida", "modelo")) %>% # Join by corrida and modelo
+    mutate(valor_relativo_anual = (year_mean_value / abs(reference_model_value))) 
   
   # Return the updated dataframe
   print("Los valores históricos de referencia han sido procesados")
@@ -114,17 +115,15 @@ calculate_relative_values <- function(data, periodo_referencia_ini, periodo_refe
 
 plot_time_series <- function(data, modelo, nombre_variable, periodo_referencia) {
   print("Comenzando a graficar datos ")
-  # Step 1: Filter data for the specified modelo
-  filtered_data <- data %>%
-    filter(modelo == !!modelo & año >= 2035) # Include only years >= 2035
   
-  # Check if there are multiple corrida values for the modelo
-  unique_corridas <- filtered_data %>%
-    distinct(corrida) %>%
-    nrow()
-  
-  # Debugging: Print the number of unique corridas
-  cat("Number of unique corridas for modelo", modelo, ":", unique_corridas, "\n")
+  # Step 1: Filter data for the specified modelo or all models
+  if (modelo == "Todos") {
+    filtered_data <- data %>%
+      filter(año >= 2035) # Include only years >= 2035
+  } else {
+    filtered_data <- data %>%
+      filter(modelo == !!modelo & año >= 2035) # Include only years >= 2035 for specific model
+  }
   
   # Variable names in Spanish
   variable_names_es <- list(
@@ -139,37 +138,35 @@ plot_time_series <- function(data, modelo, nombre_variable, periodo_referencia) 
   # Get the Spanish variable name
   var_name_es <- variable_names_es[[nombre_variable]]
   
-  # Step 2: Calculate summary statistics based on the number of corridas
-  if (unique_corridas > 1) {
-    # Multiple corridas: Calculate confidence intervals
+  # Step 2: Calculate summary statistics
+  if (modelo == "Todos") {
+    # For "Todos", calculate mean, min, and max across all models for each year
     summary_data <- filtered_data %>%
       group_by(año) %>%
       summarise(
         mean_value = mean(valor_relativo_anual, na.rm = TRUE),
-        sd_value = sd(valor_relativo_anual, na.rm = TRUE),
-        lower_bound = mean_value - sd_value, # Lower bound of confidence interval
-        upper_bound = mean_value + sd_value  # Upper bound of confidence interval
+        min_value = min(valor_relativo_anual, na.rm = TRUE),
+        max_value = max(valor_relativo_anual, na.rm = TRUE)
       ) %>%
       ungroup()
     
-    # Step 3: Create the ggplot with confidence interval
+    # Step 3: Create the ggplot with min-max range as confidence interval
     p <- ggplot(summary_data, aes(x = año)) +
-      geom_ribbon(aes(ymin = lower_bound, ymax = upper_bound), fill = "grey", alpha = 0.5) +
+      geom_ribbon(aes(ymin = min_value, ymax = max_value), fill = "grey", alpha = 0.5) +
       geom_line(aes(y = mean_value), color = "blue", size = 1) +
       labs(
-        title =  paste("Serie de tiempo de promedios anuales de ", 
-                       var_name_es, 
-                       ", modelo GCM ", 
-                       modelo, 
-                       ", período de referencia ",
-                       periodo_referencia),
+        title = paste("Serie de tiempo de promedios anuales de ", 
+                     var_name_es, 
+                     ", todos los modelos GCM", 
+                     ", período de referencia ",
+                     periodo_referencia),
         x = "Años",
-        y = paste0("Cambio relativo en ", var_name_es) # Use Spanish variable name for y-axis label
+        y = paste0("Cambio relativo en ", var_name_es)
       ) +
-      scale_x_continuous(breaks = seq(2035, max(summary_data$año), by = 2)) + # Show every 2 years
-      scale_y_continuous(breaks = seq(floor(min(summary_data$mean_value)), 
-                                      ceiling(max(summary_data$mean_value)), 
-                                      by = 1)) + # Show every 2 increments
+      scale_x_continuous(breaks = seq(2035, max(summary_data$año), by = 2)) +
+      scale_y_continuous(breaks = seq(floor(min(summary_data$min_value)), 
+                                    ceiling(max(summary_data$max_value)), 
+                                    by = 1)) +
       theme_minimal() +
       theme(
         plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
@@ -177,38 +174,85 @@ plot_time_series <- function(data, modelo, nombre_variable, periodo_referencia) 
         axis.text = element_text(size = 10)
       )
   } else {
-    # Single corrida: Plot only the mean line
-    summary_data <- filtered_data %>%
-      group_by(año) %>%
-      summarise(
-        mean_value = mean(valor_relativo_anual, na.rm = TRUE)
-      ) %>%
-      ungroup()
+    # Check if there are multiple corrida values for the modelo
+    unique_corridas <- filtered_data %>%
+      distinct(corrida) %>%
+      nrow()
     
-    # Step 3: Create the ggplot without confidence interval
-    p <- ggplot(summary_data, aes(x = año)) +
-      geom_line(aes(y = mean_value), color = "blue", size = 1) +
-      labs(
-        title =  paste("Serie de tiempo de promedios anuales de ", 
-                       var_name_es, 
-                       ", modelo GCM ", 
-                       modelo, 
-                       ", período de referencia ",
-                       periodo_referencia),
-        x = "Años",
-        y = paste0("Cambio relativo en ", var_name_es) # Use Spanish variable name for y-axis label
-      ) +
-      scale_x_continuous(breaks = seq(2035, max(summary_data$año), by = 2)) + # Show every 2 years
-      scale_y_continuous(breaks = seq(floor(min(summary_data$mean_value)), 
-                                      ceiling(max(summary_data$mean_value)), 
-                                      by = 1)) + # Show every 2 increments
-      theme_minimal() +
-      theme(
-        plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
-        axis.title = element_text(size = 12),
-        axis.text = element_text(size = 10)
-      )
+    # Debugging: Print the number of unique corridas
+    cat("Number of unique corridas for modelo", modelo, ":", unique_corridas, "\n")
+    
+    if (unique_corridas > 1) {
+      # Multiple corridas: Calculate confidence intervals
+      summary_data <- filtered_data %>%
+        group_by(año) %>%
+        summarise(
+          mean_value = mean(valor_relativo_anual, na.rm = TRUE),
+          sd_value = sd(valor_relativo_anual, na.rm = TRUE),
+          lower_bound = mean_value - sd_value, # Lower bound of confidence interval
+          upper_bound = mean_value + sd_value  # Upper bound of confidence interval
+        ) %>%
+        ungroup()
+      
+      # Step 3: Create the ggplot with confidence interval
+      p <- ggplot(summary_data, aes(x = año)) +
+        geom_ribbon(aes(ymin = lower_bound, ymax = upper_bound), fill = "grey", alpha = 0.5) +
+        geom_line(aes(y = mean_value), color = "blue", size = 1) +
+        labs(
+          title =  paste("Serie de tiempo de promedios anuales de ", 
+                         var_name_es, 
+                         ", modelo GCM ", 
+                         modelo, 
+                         ", período de referencia ",
+                         periodo_referencia),
+          x = "Años",
+          y = paste0("Cambio relativo en ", var_name_es) # Use Spanish variable name for y-axis label
+        ) +
+        scale_x_continuous(breaks = seq(2035, max(summary_data$año), by = 2)) + # Show every 2 years
+        scale_y_continuous(breaks = seq(floor(min(summary_data$mean_value)), 
+                                        ceiling(max(summary_data$mean_value)), 
+                                        by = 1)) + # Show every 2 increments
+        theme_minimal() +
+        theme(
+          plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+          axis.title = element_text(size = 12),
+          axis.text = element_text(size = 10)
+        )
+    } else {
+      # Single corrida: Plot only the mean line
+      summary_data <- filtered_data %>%
+        group_by(año) %>%
+        summarise(
+          mean_value = mean(valor_relativo_anual, na.rm = TRUE)
+        ) %>%
+        ungroup()
+      
+      # Step 3: Create the ggplot without confidence interval
+      p <- ggplot(summary_data, aes(x = año)) +
+        geom_line(aes(y = mean_value), color = "blue", size = 1) +
+        labs(
+          title =  paste("Serie de tiempo de promedios anuales de ", 
+                         var_name_es, 
+                         ", modelo GCM ", 
+                         modelo, 
+                         ", período de referencia ",
+                         periodo_referencia),
+          x = "Años",
+          y = paste0("Cambio relativo en ", var_name_es) # Use Spanish variable name for y-axis label
+        ) +
+        scale_x_continuous(breaks = seq(2035, max(summary_data$año), by = 2)) + # Show every 2 years
+        scale_y_continuous(breaks = seq(floor(min(summary_data$mean_value)), 
+                                        ceiling(max(summary_data$mean_value)), 
+                                        by = 1)) + # Show every 2 increments
+        theme_minimal() +
+        theme(
+          plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+          axis.title = element_text(size = 12),
+          axis.text = element_text(size = 10)
+        )
+    }
   }
+  
   print("Los datos han sido graficados satisfactoriamente")
   # Return the plot
   return(p)
@@ -224,30 +268,57 @@ compute_summary_statistics <- function(data, modelo, nombre_variable, periodo_re
   last_10_years_start <- current_year - 10
   
   # Filter data for the reference period
-  reference_data <- data %>%
-    filter(modelo == !!modelo & 
-           año >= periodo_referencia_ini & 
-           año <= periodo_referencia_fin) %>%
-    group_by(corrida, modelo) %>%
-    summarise(
-      reference_mean = mean(year_mean_value, na.rm = TRUE),
-      reference_sd = sd(year_mean_value, na.rm = TRUE),
-      reference_min = min(year_mean_value, na.rm = TRUE),
-      reference_max = max(year_mean_value, na.rm = TRUE)
-    ) %>%
-    ungroup()
-  
-  # Filter data for the last 10 years (or future projections if using climate model data)
-  recent_data <- data %>%
-    filter(modelo == !!modelo & año >= 2035 & año <= 2045) %>%
-    group_by(corrida, modelo) %>%
-    summarise(
-      recent_mean = mean(year_mean_value, na.rm = TRUE),
-      recent_sd = sd(year_mean_value, na.rm = TRUE),
-      recent_min = min(year_mean_value, na.rm = TRUE),
-      recent_max = max(year_mean_value, na.rm = TRUE)
-    ) %>%
-    ungroup()
+  if (modelo == "Todos") {
+    reference_data <- data %>%
+      filter(año >= periodo_referencia_ini & 
+             año <= periodo_referencia_fin) %>%
+      group_by(corrida, modelo) %>%
+      summarise(
+        reference_mean = mean(year_mean_value, na.rm = TRUE),
+        reference_sd = sd(year_mean_value, na.rm = TRUE),
+        reference_min = min(year_mean_value, na.rm = TRUE),
+        reference_max = max(year_mean_value, na.rm = TRUE)
+      ) %>%
+      ungroup()
+    
+    # Filter data for the projected period
+    recent_data <- data %>%
+      filter(año >= 2035 & año <= 2045) %>%
+      group_by(corrida, modelo) %>%
+      summarise(
+        recent_mean = mean(year_mean_value, na.rm = TRUE),
+        recent_sd = sd(year_mean_value, na.rm = TRUE),
+        recent_min = min(year_mean_value, na.rm = TRUE),
+        recent_max = max(year_mean_value, na.rm = TRUE)
+      ) %>%
+      ungroup()
+  } else {
+    # Filter data for the reference period for a specific model
+    reference_data <- data %>%
+      filter(modelo == !!modelo & 
+             año >= periodo_referencia_ini & 
+             año <= periodo_referencia_fin) %>%
+      group_by(corrida, modelo) %>%
+      summarise(
+        reference_mean = mean(year_mean_value, na.rm = TRUE),
+        reference_sd = sd(year_mean_value, na.rm = TRUE),
+        reference_min = min(year_mean_value, na.rm = TRUE),
+        reference_max = max(year_mean_value, na.rm = TRUE)
+      ) %>%
+      ungroup()
+    
+    # Filter data for the projected period for a specific model
+    recent_data <- data %>%
+      filter(modelo == !!modelo & año >= 2035 & año <= 2045) %>%
+      group_by(corrida, modelo) %>%
+      summarise(
+        recent_mean = mean(year_mean_value, na.rm = TRUE),
+        recent_sd = sd(year_mean_value, na.rm = TRUE),
+        recent_min = min(year_mean_value, na.rm = TRUE),
+        recent_max = max(year_mean_value, na.rm = TRUE)
+      ) %>%
+      ungroup()
+  }
   
   # Join the data and calculate changes
   stats_combined <- reference_data %>%
@@ -266,6 +337,23 @@ compute_summary_statistics <- function(data, modelo, nombre_variable, periodo_re
       absolute_change = recent_mean - ref_mean
     ) %>%
     ungroup()
+  
+  # For "Todos", calculate the average across all models
+  if (modelo == "Todos") {
+    stats_combined <- stats_combined %>%
+      summarise(
+        ref_mean = mean(ref_mean, na.rm = TRUE),
+        ref_sd = mean(ref_sd, na.rm = TRUE),
+        ref_min = min(ref_min, na.rm = TRUE),
+        ref_max = max(ref_max, na.rm = TRUE),
+        recent_mean = mean(recent_mean, na.rm = TRUE),
+        recent_sd = mean(recent_sd, na.rm = TRUE),
+        recent_min = min(recent_min, na.rm = TRUE),
+        recent_max = max(recent_max, na.rm = TRUE),
+        percent_change = mean(percent_change, na.rm = TRUE),
+        absolute_change = mean(absolute_change, na.rm = TRUE)
+      )
+  }
   
   # Create a dataframe with statistic names and values for display
   stats_df <- data.frame(
@@ -315,19 +403,35 @@ compute_summary_statistics <- function(data, modelo, nombre_variable, periodo_re
   var_unit <- variable_units[[nombre_variable]]
   
   # Create the summary paragraph in Spanish
-  summary_paragraph <- paste0(
-    "<h4>Estadísticas de Resumen para ", var_name_es, " (", nombre_variable, ")</h4>",
-    "<p>Utilizando el modelo climático <b>", modelo, "</b>:</p>",
-    "<p>Durante el período de referencia (", periodo_referencia_ini, "-", periodo_referencia_fin, "), el promedio anual de ", 
-    var_name_es, " fue <b>", round(stats_combined$ref_mean[1], 2), " ", var_unit, "</b>, con un rango desde ", 
-    round(stats_combined$ref_min[1], 2), " hasta ", round(stats_combined$ref_max[1], 2), " ", var_unit, ".</p>",
-    "<p>Para el período proyectado (2035-2045), el modelo predice un promedio anual de ", var_name_es, " de <b>", 
-    round(stats_combined$recent_mean[1], 2), " ", var_unit, "</b>, con un rango desde ", 
-    round(stats_combined$recent_min[1], 2), " hasta ", round(stats_combined$recent_max[1], 2), " ", var_unit, ".</p>",
-    "<p>Esto representa un cambio de <b>", round(stats_combined$percent_change[1], 2), "%</b> comparado con el período de referencia, ",
-    "con un cambio absoluto de <b>", round(stats_combined$absolute_change[1], 2), " ", var_unit, "</b>.</p>",
-    "<p><i>Nota: Todos los valores representan promedios anuales.</i></p>"
-  )
+  if (modelo == "Todos") {
+    summary_paragraph <- paste0(
+      "<h4>Estadísticas de Resumen para ", var_name_es, " (", nombre_variable, ")</h4>",
+      "<p>Utilizando <b>todos los modelos climáticos disponibles</b>:</p>",
+      "<p>Durante el período de referencia (", periodo_referencia_ini, "-", periodo_referencia_fin, "), el promedio anual de ", 
+      var_name_es, " fue <b>", round(stats_combined$ref_mean[1], 2), " ", var_unit, "</b>, con un rango desde ", 
+      round(stats_combined$ref_min[1], 2), " hasta ", round(stats_combined$ref_max[1], 2), " ", var_unit, ".</p>",
+      "<p>Para el período proyectado (2035-2045), los modelos predicen un promedio anual de ", var_name_es, " de <b>", 
+      round(stats_combined$recent_mean[1], 2), " ", var_unit, "</b>, con un rango desde ", 
+      round(stats_combined$recent_min[1], 2), " hasta ", round(stats_combined$recent_max[1], 2), " ", var_unit, ".</p>",
+      "<p>Esto representa un cambio promedio de <b>", round(stats_combined$percent_change[1], 2), "%</b> comparado con el período de referencia, ",
+      "con un cambio absoluto promedio de <b>", round(stats_combined$absolute_change[1], 2), " ", var_unit, "</b>.</p>",
+      "<p><i>Nota: Todos los valores representan promedios anuales entre todos los modelos disponibles.</i></p>"
+    )
+  } else {
+    summary_paragraph <- paste0(
+      "<h4>Estadísticas de Resumen para ", var_name_es, " (", nombre_variable, ")</h4>",
+      "<p>Utilizando el modelo climático <b>", modelo, "</b>:</p>",
+      "<p>Durante el período de referencia (", periodo_referencia_ini, "-", periodo_referencia_fin, "), el promedio anual de ", 
+      var_name_es, " fue <b>", round(stats_combined$ref_mean[1], 2), " ", var_unit, "</b>, con un rango desde ", 
+      round(stats_combined$ref_min[1], 2), " hasta ", round(stats_combined$ref_max[1], 2), " ", var_unit, ".</p>",
+      "<p>Para el período proyectado (2035-2045), el modelo predice un promedio anual de ", var_name_es, " de <b>", 
+      round(stats_combined$recent_mean[1], 2), " ", var_unit, "</b>, con un rango desde ", 
+      round(stats_combined$recent_min[1], 2), " hasta ", round(stats_combined$recent_max[1], 2), " ", var_unit, ".</p>",
+      "<p>Esto representa un cambio de <b>", round(stats_combined$percent_change[1], 2), "%</b> comparado con el período de referencia, ",
+      "con un cambio absoluto de <b>", round(stats_combined$absolute_change[1], 2), " ", var_unit, "</b>.</p>",
+      "<p><i>Nota: Todos los valores representan promedios anuales.</i></p>"
+    )
+  }
   
   # Return both the statistics dataframe and the summary paragraph
   return(list(

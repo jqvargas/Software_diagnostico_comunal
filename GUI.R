@@ -77,8 +77,11 @@ server <- function(input, output, session) {
     # Get the available models for the selected variable
     selected_models <- available_models[[input$nombre_variable]]
     
+    # Add "Todos" as the first option
+    model_choices <- c("Todos", selected_models)
+    
     # Update the modelo dropdown with the available models
-    updateSelectInput(session, "modelo", choices = selected_models)
+    updateSelectInput(session, "modelo", choices = model_choices)
   })
   
   # Reactive expression to process data and generate plot
@@ -88,11 +91,39 @@ server <- function(input, output, session) {
     
     # Step 1: Procesar variable
     output$console_logs <- renderText("Paso 1: Procesando variable...")
-    resultado <- procesar_variable_comuna(
-      nombre_variable = input$nombre_variable,
-      codigo_comuna = input$codigo_comuna,
-      modelo = input$modelo
-    )
+    
+    # If "Todos" is selected, we need to process all models for the variable
+    if (input$modelo == "Todos") {
+      # Get all models for the selected variable
+      all_models <- available_models[[input$nombre_variable]]
+      
+      # Initialize an empty dataframe to store combined results
+      resultado_combinado <- data.frame()
+      
+      # Process each model and combine the results
+      for (modelo_actual in all_models) {
+        output$console_logs <- renderText(paste("Procesando modelo:", modelo_actual))
+        
+        # Process the current model
+        resultado_modelo <- procesar_variable_comuna(
+          nombre_variable = input$nombre_variable,
+          codigo_comuna = input$codigo_comuna,
+          modelo = modelo_actual
+        )
+        
+        # Combine with previous results
+        resultado_combinado <- bind_rows(resultado_combinado, resultado_modelo)
+      }
+      
+      resultado <- resultado_combinado
+    } else {
+      # Process a single model as before
+      resultado <- procesar_variable_comuna(
+        nombre_variable = input$nombre_variable,
+        codigo_comuna = input$codigo_comuna,
+        modelo = input$modelo
+      )
+    }
     
     # Step 2: Calcular periodo de referencia
     output$console_logs <- renderText("Paso 2: Calculando valores relativos...")
