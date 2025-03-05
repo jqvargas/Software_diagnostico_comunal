@@ -113,7 +113,7 @@ calculate_relative_values <- function(data, periodo_referencia_ini, periodo_refe
 
 ### Función 3) Graficar resultados
 
-plot_time_series <- function(data, modelo, nombre_variable, periodo_referencia) {
+plot_time_series <- function(data, modelo, nombre_variable, periodo_referencia, nombre_comuna = NULL) {
   print("Comenzando a graficar datos ")
   
   # Step 1: Filter data for the specified modelo or all models
@@ -138,6 +138,9 @@ plot_time_series <- function(data, modelo, nombre_variable, periodo_referencia) 
   # Get the Spanish variable name
   var_name_es <- variable_names_es[[nombre_variable]]
   
+  # Prepare title with comuna name if provided
+  comuna_title <- ifelse(!is.null(nombre_comuna), paste0(" para la comuna ", nombre_comuna), "")
+  
   # Step 2: Calculate summary statistics
   if (modelo == "Todos") {
     # For "Todos", calculate mean, min, and max across all models for each year
@@ -159,7 +162,8 @@ plot_time_series <- function(data, modelo, nombre_variable, periodo_referencia) 
                      var_name_es, 
                      ", todos los modelos GCM", 
                      ", período de referencia ",
-                     periodo_referencia),
+                     periodo_referencia,
+                     comuna_title),
         x = "Años",
         y = paste0("Cambio relativo en ", var_name_es)
       ) +
@@ -204,7 +208,8 @@ plot_time_series <- function(data, modelo, nombre_variable, periodo_referencia) 
                          ", modelo GCM ", 
                          modelo, 
                          ", período de referencia ",
-                         periodo_referencia),
+                         periodo_referencia,
+                         comuna_title),
           x = "Años",
           y = paste0("Cambio relativo en ", var_name_es) # Use Spanish variable name for y-axis label
         ) +
@@ -236,7 +241,8 @@ plot_time_series <- function(data, modelo, nombre_variable, periodo_referencia) 
                          ", modelo GCM ", 
                          modelo, 
                          ", período de referencia ",
-                         periodo_referencia),
+                         periodo_referencia,
+                         comuna_title),
           x = "Años",
           y = paste0("Cambio relativo en ", var_name_es) # Use Spanish variable name for y-axis label
         ) +
@@ -260,7 +266,7 @@ plot_time_series <- function(data, modelo, nombre_variable, periodo_referencia) 
 
 ### Función 4) Calcular estadísticas de resumen
 
-compute_summary_statistics <- function(data, modelo, nombre_variable, periodo_referencia_ini, periodo_referencia_fin) {
+compute_summary_statistics <- function(data, modelo, nombre_variable, periodo_referencia_ini, periodo_referencia_fin, nombre_comuna = NULL) {
   print("Comenzando a calcular estadísticas de resumen...")
   
   # Get current year to calculate last 10 years
@@ -425,10 +431,13 @@ compute_summary_statistics <- function(data, modelo, nombre_variable, periodo_re
   var_name_es <- variable_names_es[[nombre_variable]]
   var_unit <- variable_units[[nombre_variable]]
   
+  # Prepare comuna text if provided
+  comuna_text <- ifelse(!is.null(nombre_comuna), paste0(" para la comuna ", nombre_comuna), "")
+  
   # Create the summary paragraph in Spanish
   if (modelo == "Todos") {
     summary_paragraph <- paste0(
-      "<h4>Estadísticas de Resumen para ", var_name_es, " (", nombre_variable, ")</h4>",
+      "<h4>Estadísticas de Resumen para ", var_name_es, " (", nombre_variable, ")", comuna_text, "</h4>",
       "<p>Utilizando <b>todos los modelos climáticos disponibles</b>:</p>",
       "<p>Durante el período de referencia (", periodo_referencia_ini, "-", periodo_referencia_fin, "), el promedio anual de ", 
       var_name_es, " fue <b>", round(stats_combined$ref_mean[1], 2), " ", var_unit, "</b>, con un rango desde ", 
@@ -447,7 +456,7 @@ compute_summary_statistics <- function(data, modelo, nombre_variable, periodo_re
   } else {
     # For a single model, we still show which run produced min and max values
     summary_paragraph <- paste0(
-      "<h4>Estadísticas de Resumen para ", var_name_es, " (", nombre_variable, ")</h4>",
+      "<h4>Estadísticas de Resumen para ", var_name_es, " (", nombre_variable, ")", comuna_text, "</h4>",
       "<p>Utilizando el modelo climático <b>", modelo, "</b>:</p>",
       "<p>Durante el período de referencia (", periodo_referencia_ini, "-", periodo_referencia_fin, "), el promedio anual de ", 
       var_name_es, " fue <b>", round(stats_combined$ref_mean[1], 2), " ", var_unit, "</b>, con un rango desde ", 

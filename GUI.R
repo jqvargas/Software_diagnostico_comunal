@@ -5,6 +5,11 @@ source(paste0(getwd(), "/indicadores_futuros/procesar_arclim.R"))
 available_models_df <- read.csv(paste0(getwd(), "/BBDD/ARCLIM/modelos_disponibles.csv"))
 available_models <- split(available_models_df$modelo, available_models_df$variable)
 
+# Read the CSV file with comuna metadata
+comunas_df <- read.csv(paste0(getwd(), "/BBDD/ARCLIM/metadatos_comunas.csv"), sep = ";")
+# Create a named vector for the dropdown (nombre_comuna as names, codigo_comuna as values)
+comunas_choices <- setNames(comunas_df$codigo_comuna, comunas_df$nombre_comuna)
+
 ############ Libraries
 library(shiny)
 library(dplyr)
@@ -36,7 +41,7 @@ ui <- shinydashboardPlus::dashboardPage(
                                   title = "Panel de Control", width = 4, solidHeader = TRUE, status = "primary",
                                   selectInput("nombre_variable", "Seleccionar Variable:", 
                                               choices = c("tasmax", "tasmin", "pr", "vel", "rsds", "huss")),
-                                  textInput("codigo_comuna", "Código de Comuna:", value = "2201"),
+                                  selectInput("nombre_comuna", "Nombre de Comuna:", choices = comunas_choices),
                                   numericInput("periodo_referencia_ini", "Año Inicial del Período de Referencia:", value = 1980, min = 1950, max = 2020),
                                   numericInput("periodo_referencia_fin", "Año Final del Período de Referencia:", value = 2010, min = 1950, max = 2020),
                                   selectInput("modelo", "Seleccionar Modelo:", choices = NULL),  # Initially empty
@@ -66,6 +71,16 @@ ui <- shinydashboardPlus::dashboardPage(
 # Define Server
 server <- function(input, output, session) {
   
+  # Reactive value to store the selected comuna code and name
+  selected_comuna <- reactiveVal(list(codigo = NULL, nombre = NULL))
+  
+  # Update selected_comuna when nombre_comuna changes
+  observeEvent(input$nombre_comuna, {
+    codigo_comuna <- input$nombre_comuna
+    nombre_comuna <- names(which(comunas_choices == codigo_comuna))
+    selected_comuna(list(codigo = codigo_comuna, nombre = nombre_comuna))
+  })
+  
   # Dynamically update the modelo dropdown based on the selected variable
   observeEvent(input$nombre_variable, {
     # Clear the modelo dropdown if no variable is selected
@@ -86,8 +101,13 @@ server <- function(input, output, session) {
   
   # Reactive expression to process data and generate plot
   processed_data <- eventReactive(input$generate_plot, {
+    # Get the selected comuna code and name
+    comuna_info <- selected_comuna()
+    codigo_comuna <- comuna_info$codigo
+    nombre_comuna <- comuna_info$nombre
+    
     # Initialize logs
-    output$console_logs <- renderText("Procesamiento iniciado...")
+    output$console_logs <- renderText(paste0("Procesamiento iniciado para la comuna: ", nombre_comuna, " (", codigo_comuna, ")"))
     
     # Step 1: Procesar variable
     output$console_logs <- renderText("Paso 1: Procesando variable...")
@@ -107,7 +127,7 @@ server <- function(input, output, session) {
         # Process the current model
         resultado_modelo <- procesar_variable_comuna(
           nombre_variable = input$nombre_variable,
-          codigo_comuna = input$codigo_comuna,
+          codigo_comuna = codigo_comuna,
           modelo = modelo_actual
         )
         
@@ -120,7 +140,7 @@ server <- function(input, output, session) {
       # Process a single model as before
       resultado <- procesar_variable_comuna(
         nombre_variable = input$nombre_variable,
-        codigo_comuna = input$codigo_comuna,
+        codigo_comuna = codigo_comuna,
         modelo = input$modelo
       )
     }
@@ -143,7 +163,8 @@ server <- function(input, output, session) {
       nombre_variable = input$nombre_variable,
       periodo_referencia = paste0(input$periodo_referencia_ini,
                                   "-",
-                                  input$periodo_referencia_fin)
+                                  input$periodo_referencia_fin),
+      nombre_comuna = nombre_comuna
     )
     
     # Step 4: Calculate summary statistics
@@ -153,14 +174,15 @@ server <- function(input, output, session) {
       modelo = input$modelo,
       nombre_variable = input$nombre_variable,
       periodo_referencia_ini = input$periodo_referencia_ini,
-      periodo_referencia_fin = input$periodo_referencia_fin
+      periodo_referencia_fin = input$periodo_referencia_fin,
+      nombre_comuna = nombre_comuna
     )
     
     # Render the summary statistics paragraph
     output$summary_stats <- renderUI({
-      # Add the comuna code to the beginning of the summary paragraph
-      comuna_info <- paste0("<p>Para el código de comuna <b>", input$codigo_comuna, "</b>:</p>")
-      HTML(paste0(comuna_info, summary_stats$summary_paragraph))
+      # Add the comuna name to the beginning of the summary paragraph
+      comuna_info_html <- paste0("<p>Para la comuna <b>", nombre_comuna, "</b> (código: ", codigo_comuna, "):</p>")
+      HTML(paste0(comuna_info_html, summary_stats$summary_paragraph))
     })
     
     # Final log message
@@ -168,7 +190,9 @@ server <- function(input, output, session) {
     
     return(list(
       plot = plot,
-      summary_stats = summary_stats
+      summary_stats = summary_stats,
+      codigo_comuna = codigo_comuna,
+      nombre_comuna = nombre_comuna
     ))
   })
   
@@ -184,8 +208,12 @@ server <- function(input, output, session) {
     # Check if a plot has been generated
     req(processed_data())
     
+    # Get the selected comuna code
+    codigo_comuna <- processed_data()$codigo_comuna
+    nombre_comuna <- processed_data()$nombre_comuna
+    
     # Create the folder structure
-    folder_path <- paste0(getwd(), "/BBDD/resultados/", input$codigo_comuna, "/", input$nombre_variable, "/", input$modelo, "/")
+    folder_path <- paste0(getwd(), "/BBDD/resultados/", codigo_comuna, "/", input$nombre_variable, "/", input$modelo, "/")
     
     # Create the directory if it doesn't exist
     if (!dir.exists(folder_path)) {
@@ -209,7 +237,7 @@ server <- function(input, output, session) {
     summary_text <- gsub("&nbsp;", " ", summary_text)
     
     # Add comuna information to the summary text
-    summary_text <- paste0("Resumen para la comuna ", input$codigo_comuna, ":\n\n", summary_text)
+    summary_text <- paste0("Resumen para la comuna ", nombre_comuna, " (", codigo_comuna, "):\n\n", summary_text)
     
     # Write to file
     writeLines(summary_text, summary_full_path)
