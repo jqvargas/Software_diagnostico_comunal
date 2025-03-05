@@ -292,6 +292,18 @@ compute_summary_statistics <- function(data, modelo, nombre_variable, periodo_re
         recent_max = max(year_mean_value, na.rm = TRUE)
       ) %>%
       ungroup()
+    
+    # Find which model and run produced the min and max values
+    min_model_run <- recent_data %>%
+      arrange(recent_mean) %>%
+      slice(1) %>%
+      select(modelo, corrida, recent_mean)
+    
+    max_model_run <- recent_data %>%
+      arrange(desc(recent_mean)) %>%
+      slice(1) %>%
+      select(modelo, corrida, recent_mean)
+    
   } else {
     # Filter data for the reference period for a specific model
     reference_data <- data %>%
@@ -318,6 +330,17 @@ compute_summary_statistics <- function(data, modelo, nombre_variable, periodo_re
         recent_max = max(year_mean_value, na.rm = TRUE)
       ) %>%
       ungroup()
+    
+    # Find which run produced the min and max values
+    min_model_run <- recent_data %>%
+      arrange(recent_mean) %>%
+      slice(1) %>%
+      select(modelo, corrida, recent_mean)
+    
+    max_model_run <- recent_data %>%
+      arrange(desc(recent_mean)) %>%
+      slice(1) %>%
+      select(modelo, corrida, recent_mean)
   }
   
   # Join the data and calculate changes
@@ -413,11 +436,16 @@ compute_summary_statistics <- function(data, modelo, nombre_variable, periodo_re
       "<p>Para el período proyectado (2035-2045), los modelos predicen un promedio anual de ", var_name_es, " de <b>", 
       round(stats_combined$recent_mean[1], 2), " ", var_unit, "</b>, con un rango desde ", 
       round(stats_combined$recent_min[1], 2), " hasta ", round(stats_combined$recent_max[1], 2), " ", var_unit, ".</p>",
+      "<p>El valor mínimo fue obtenido por el modelo <b>", min_model_run$modelo, "</b> (corrida ", min_model_run$corrida, 
+      ") con un valor de <b>", round(min_model_run$recent_mean, 2), " ", var_unit, "</b>.</p>",
+      "<p>El valor máximo fue obtenido por el modelo <b>", max_model_run$modelo, "</b> (corrida ", max_model_run$corrida, 
+      ") con un valor de <b>", round(max_model_run$recent_mean, 2), " ", var_unit, "</b>.</p>",
       "<p>Esto representa un cambio promedio de <b>", round(stats_combined$percent_change[1], 2), "%</b> comparado con el período de referencia, ",
       "con un cambio absoluto promedio de <b>", round(stats_combined$absolute_change[1], 2), " ", var_unit, "</b>.</p>",
       "<p><i>Nota: Todos los valores representan promedios anuales entre todos los modelos disponibles.</i></p>"
     )
   } else {
+    # For a single model, we still show which run produced min and max values
     summary_paragraph <- paste0(
       "<h4>Estadísticas de Resumen para ", var_name_es, " (", nombre_variable, ")</h4>",
       "<p>Utilizando el modelo climático <b>", modelo, "</b>:</p>",
@@ -426,7 +454,23 @@ compute_summary_statistics <- function(data, modelo, nombre_variable, periodo_re
       round(stats_combined$ref_min[1], 2), " hasta ", round(stats_combined$ref_max[1], 2), " ", var_unit, ".</p>",
       "<p>Para el período proyectado (2035-2045), el modelo predice un promedio anual de ", var_name_es, " de <b>", 
       round(stats_combined$recent_mean[1], 2), " ", var_unit, "</b>, con un rango desde ", 
-      round(stats_combined$recent_min[1], 2), " hasta ", round(stats_combined$recent_max[1], 2), " ", var_unit, ".</p>",
+      round(stats_combined$recent_min[1], 2), " hasta ", round(stats_combined$recent_max[1], 2), " ", var_unit, ".</p>"
+    )
+    
+    # Only add run information if there are multiple runs
+    if (nrow(recent_data) > 1) {
+      summary_paragraph <- paste0(
+        summary_paragraph,
+        "<p>El valor mínimo fue obtenido en la corrida <b>", min_model_run$corrida, 
+        "</b> con un valor de <b>", round(min_model_run$recent_mean, 2), " ", var_unit, "</b>.</p>",
+        "<p>El valor máximo fue obtenido en la corrida <b>", max_model_run$corrida, 
+        "</b> con un valor de <b>", round(max_model_run$recent_mean, 2), " ", var_unit, "</b>.</p>"
+      )
+    }
+    
+    # Add the change information
+    summary_paragraph <- paste0(
+      summary_paragraph,
       "<p>Esto representa un cambio de <b>", round(stats_combined$percent_change[1], 2), "%</b> comparado con el período de referencia, ",
       "con un cambio absoluto de <b>", round(stats_combined$absolute_change[1], 2), " ", var_unit, "</b>.</p>",
       "<p><i>Nota: Todos los valores representan promedios anuales.</i></p>"
