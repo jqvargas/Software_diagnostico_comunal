@@ -126,6 +126,19 @@ plot_time_series <- function(data, modelo, nombre_variable, periodo_referencia) 
   # Debugging: Print the number of unique corridas
   cat("Number of unique corridas for modelo", modelo, ":", unique_corridas, "\n")
   
+  # Variable names in Spanish
+  variable_names_es <- list(
+    "tasmax" = "temperatura máxima",
+    "tasmin" = "temperatura mínima",
+    "pr" = "precipitación",
+    "vel" = "velocidad del viento",
+    "rsds" = "radiación solar",
+    "huss" = "humedad específica"
+  )
+  
+  # Get the Spanish variable name
+  var_name_es <- variable_names_es[[nombre_variable]]
+  
   # Step 2: Calculate summary statistics based on the number of corridas
   if (unique_corridas > 1) {
     # Multiple corridas: Calculate confidence intervals
@@ -144,14 +157,14 @@ plot_time_series <- function(data, modelo, nombre_variable, periodo_referencia) 
       geom_ribbon(aes(ymin = lower_bound, ymax = upper_bound), fill = "grey", alpha = 0.5) +
       geom_line(aes(y = mean_value), color = "blue", size = 1) +
       labs(
-        title =  paste("Serie de tiempo de la variable ", 
-                       nombre_variable, 
-                       ", modelo GCM utilizado ", 
+        title =  paste("Serie de tiempo de promedios anuales de ", 
+                       var_name_es, 
+                       ", modelo GCM ", 
                        modelo, 
-                       ", periodo de referencia utilizado ",
+                       ", período de referencia ",
                        periodo_referencia),
         x = "Años",
-        y = paste0("Cambio relativo en: ", nombre_variable) # Use nombre_variable for y-axis label
+        y = paste0("Cambio relativo en ", var_name_es) # Use Spanish variable name for y-axis label
       ) +
       scale_x_continuous(breaks = seq(2035, max(summary_data$año), by = 2)) + # Show every 2 years
       scale_y_continuous(breaks = seq(floor(min(summary_data$mean_value)), 
@@ -176,14 +189,14 @@ plot_time_series <- function(data, modelo, nombre_variable, periodo_referencia) 
     p <- ggplot(summary_data, aes(x = año)) +
       geom_line(aes(y = mean_value), color = "blue", size = 1) +
       labs(
-        title =  paste("Serie de tiempo de la variable ", 
-                       nombre_variable, 
-                       ", modelo GCM utilizado ", 
+        title =  paste("Serie de tiempo de promedios anuales de ", 
+                       var_name_es, 
+                       ", modelo GCM ", 
                        modelo, 
-                       ", periodo de referencia utilizado ",
+                       ", período de referencia ",
                        periodo_referencia),
         x = "Años",
-        y = paste0("Cambio relativo en: ", nombre_variable) # Use nombre_variable for y-axis label
+        y = paste0("Cambio relativo en ", var_name_es) # Use Spanish variable name for y-axis label
       ) +
       scale_x_continuous(breaks = seq(2035, max(summary_data$año), by = 2)) + # Show every 2 years
       scale_y_continuous(breaks = seq(floor(min(summary_data$mean_value)), 
@@ -257,14 +270,14 @@ compute_summary_statistics <- function(data, modelo, nombre_variable, periodo_re
   # Create a dataframe with statistic names and values for display
   stats_df <- data.frame(
     statistic = c(
-      "Reference Period Mean",
-      "Reference Period Min",
-      "Reference Period Max",
-      "Recent Period Mean (2035-2045)",
-      "Recent Period Min",
-      "Recent Period Max",
-      "Absolute Change",
-      "Percent Change (%)"
+      "Promedio del Período de Referencia",
+      "Mínimo del Período de Referencia",
+      "Máximo del Período de Referencia",
+      "Promedio del Período Reciente (2035-2045)",
+      "Mínimo del Período Reciente",
+      "Máximo del Período Reciente",
+      "Cambio Absoluto",
+      "Cambio Porcentual (%)"
     ),
     value = c(
       round(stats_combined$ref_mean[1], 2),
@@ -279,13 +292,13 @@ compute_summary_statistics <- function(data, modelo, nombre_variable, periodo_re
   )
   
   # Generate a summary paragraph
-  variable_names <- list(
-    "tasmax" = "maximum temperature",
-    "tasmin" = "minimum temperature",
-    "pr" = "precipitation",
-    "vel" = "wind speed",
-    "rsds" = "solar radiation",
-    "huss" = "specific humidity"
+  variable_names_es <- list(
+    "tasmax" = "temperatura máxima",
+    "tasmin" = "temperatura mínima",
+    "pr" = "precipitación",
+    "vel" = "velocidad del viento",
+    "rsds" = "radiación solar",
+    "huss" = "humedad específica"
   )
   
   variable_units <- list(
@@ -298,21 +311,22 @@ compute_summary_statistics <- function(data, modelo, nombre_variable, periodo_re
   )
   
   # Get the full variable name and unit
-  var_name <- variable_names[[nombre_variable]]
+  var_name_es <- variable_names_es[[nombre_variable]]
   var_unit <- variable_units[[nombre_variable]]
   
-  # Create the summary paragraph
+  # Create the summary paragraph in Spanish
   summary_paragraph <- paste0(
-    "<h4>Summary Statistics for ", var_name, " (", nombre_variable, ")</h4>",
-    "<p>Using the <b>", modelo, "</b> climate model:</p>",
-    "<p>During the reference period (", periodo_referencia_ini, "-", periodo_referencia_fin, "), the average ", 
-    var_name, " was <b>", round(stats_combined$ref_mean[1], 2), " ", var_unit, "</b>, ranging from ", 
-    round(stats_combined$ref_min[1], 2), " to ", round(stats_combined$ref_max[1], 2), " ", var_unit, ".</p>",
-    "<p>For the projected period (2035-2045), the model predicts an average ", var_name, " of <b>", 
-    round(stats_combined$recent_mean[1], 2), " ", var_unit, "</b>, ranging from ", 
-    round(stats_combined$recent_min[1], 2), " to ", round(stats_combined$recent_max[1], 2), " ", var_unit, ".</p>",
-    "<p>This represents a <b>", round(stats_combined$percent_change[1], 2), "%</b> change compared to the reference period, ",
-    "with an absolute change of <b>", round(stats_combined$absolute_change[1], 2), " ", var_unit, "</b>.</p>"
+    "<h4>Estadísticas de Resumen para ", var_name_es, " (", nombre_variable, ")</h4>",
+    "<p>Utilizando el modelo climático <b>", modelo, "</b>:</p>",
+    "<p>Durante el período de referencia (", periodo_referencia_ini, "-", periodo_referencia_fin, "), el promedio anual de ", 
+    var_name_es, " fue <b>", round(stats_combined$ref_mean[1], 2), " ", var_unit, "</b>, con un rango desde ", 
+    round(stats_combined$ref_min[1], 2), " hasta ", round(stats_combined$ref_max[1], 2), " ", var_unit, ".</p>",
+    "<p>Para el período proyectado (2035-2045), el modelo predice un promedio anual de ", var_name_es, " de <b>", 
+    round(stats_combined$recent_mean[1], 2), " ", var_unit, "</b>, con un rango desde ", 
+    round(stats_combined$recent_min[1], 2), " hasta ", round(stats_combined$recent_max[1], 2), " ", var_unit, ".</p>",
+    "<p>Esto representa un cambio de <b>", round(stats_combined$percent_change[1], 2), "%</b> comparado con el período de referencia, ",
+    "con un cambio absoluto de <b>", round(stats_combined$absolute_change[1], 2), " ", var_unit, "</b>.</p>",
+    "<p><i>Nota: Todos los valores representan promedios anuales.</i></p>"
   )
   
   # Return both the statistics dataframe and the summary paragraph

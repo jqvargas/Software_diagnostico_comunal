@@ -17,15 +17,15 @@ library(shinydashboardPlus)
 # Define GUI
 ui <- shinydashboardPlus::dashboardPage(
   header = shinydashboardPlus::dashboardHeader(
-    title = "Climate Data Dashboard",
+    title = "Panel de Datos Climáticos",
     titleWidth = 300
   ),
   sidebar = shinydashboardPlus::dashboardSidebar(
     width = 300,
     shinydashboard::sidebarMenu(  # Use shinydashboard::sidebarMenu
-      shinydashboard::menuItem("Data Selection", tabName = "data_selection", icon = icon("chart-line")),
-      shinydashboard::menuSubItem("Future Data", tabName = "future_data", icon = icon("arrow-right")),
-      shinydashboard::menuItem("Historical Data", tabName = "historical_data", icon = icon("chart-bar"), disabled = TRUE) # Placeholder
+      shinydashboard::menuItem("Selección de Datos", tabName = "data_selection", icon = icon("chart-line")),
+      shinydashboard::menuSubItem("Datos Futuros", tabName = "future_data", icon = icon("arrow-right")),
+      shinydashboard::menuItem("Datos Históricos", tabName = "historical_data", icon = icon("chart-bar"), disabled = TRUE) # Placeholder
     )
   ),
   body = shinydashboard::dashboardBody(
@@ -33,28 +33,28 @@ ui <- shinydashboardPlus::dashboardPage(
       shinydashboard::tabItem(tabName = "future_data",
                               fluidRow(
                                 shinydashboard::box(
-                                  title = "Control Panel", width = 4, solidHeader = TRUE, status = "primary",
-                                  selectInput("nombre_variable", "Select Variable:", 
+                                  title = "Panel de Control", width = 4, solidHeader = TRUE, status = "primary",
+                                  selectInput("nombre_variable", "Seleccionar Variable:", 
                                               choices = c("tasmax", "tasmin", "pr", "vel", "rsds", "huss")),
-                                  textInput("codigo_comuna", "Enter Comuna Code:", value = "2201"),
-                                  numericInput("periodo_referencia_ini", "Reference Period Start Year:", value = 1980, min = 1950, max = 2020),
-                                  numericInput("periodo_referencia_fin", "Reference Period End Year:", value = 2010, min = 1950, max = 2020),
-                                  selectInput("modelo", "Select Model:", choices = NULL),  # Initially empty
-                                  actionButton("generate_plot", "Generate Plot", class = "btn-primary"),
+                                  textInput("codigo_comuna", "Código de Comuna:", value = "2201"),
+                                  numericInput("periodo_referencia_ini", "Año Inicial del Período de Referencia:", value = 1980, min = 1950, max = 2020),
+                                  numericInput("periodo_referencia_fin", "Año Final del Período de Referencia:", value = 2010, min = 1950, max = 2020),
+                                  selectInput("modelo", "Seleccionar Modelo:", choices = NULL),  # Initially empty
+                                  actionButton("generate_plot", "Generar Gráfico", class = "btn-primary"),
                                   br(),
                                   br(),
-                                  actionButton("save_plot", "Save Plot", class = "btn-success")  # Save button
+                                  actionButton("save_plot", "Guardar Resultados", class = "btn-success")  # Save button
                                 ),
                                 shinydashboard::box(
-                                  title = "Plot Output", width = 8, solidHeader = TRUE, status = "info",
+                                  title = "Gráfico", width = 8, solidHeader = TRUE, status = "info",
                                   plotOutput("time_series_plot", height = "600px")
                                 ),
                                 shinydashboard::box(
-                                  title = "Summary Statistics", width = 12, solidHeader = TRUE, status = "success",
+                                  title = "Estadísticas de Resumen", width = 12, solidHeader = TRUE, status = "success",
                                   htmlOutput("summary_stats")  # Display summary statistics here
                                 ),
                                 shinydashboard::box(
-                                  title = "Logs", width = 12, solidHeader = TRUE, status = "warning",
+                                  title = "Registros", width = 12, solidHeader = TRUE, status = "warning",
                                   textOutput("console_logs")  # Display logs here
                                 )
                               )
@@ -84,10 +84,10 @@ server <- function(input, output, session) {
   # Reactive expression to process data and generate plot
   processed_data <- eventReactive(input$generate_plot, {
     # Initialize logs
-    output$console_logs <- renderText("Processing started...")
+    output$console_logs <- renderText("Procesamiento iniciado...")
     
     # Step 1: Procesar variable
-    output$console_logs <- renderText("Step 1: Processing variable...")
+    output$console_logs <- renderText("Paso 1: Procesando variable...")
     resultado <- procesar_variable_comuna(
       nombre_variable = input$nombre_variable,
       codigo_comuna = input$codigo_comuna,
@@ -95,7 +95,7 @@ server <- function(input, output, session) {
     )
     
     # Step 2: Calcular periodo de referencia
-    output$console_logs <- renderText("Step 2: Calculating relative values...")
+    output$console_logs <- renderText("Paso 2: Calculando valores relativos...")
     relative_values <- calculate_relative_values(
       data = resultado,
       periodo_referencia_ini = input$periodo_referencia_ini,
@@ -105,7 +105,7 @@ server <- function(input, output, session) {
     )
     
     # Step 3: Graficar resultados
-    output$console_logs <- renderText("Step 3: Generating plot...")
+    output$console_logs <- renderText("Paso 3: Generando gráfico...")
     plot <- plot_time_series(
       data = relative_values,
       modelo = input$modelo,
@@ -116,7 +116,7 @@ server <- function(input, output, session) {
     )
     
     # Step 4: Calculate summary statistics
-    output$console_logs <- renderText("Step 4: Calculating summary statistics...")
+    output$console_logs <- renderText("Paso 4: Calculando estadísticas de resumen...")
     summary_stats <- compute_summary_statistics(
       data = relative_values,
       modelo = input$modelo,
@@ -128,12 +128,12 @@ server <- function(input, output, session) {
     # Render the summary statistics paragraph
     output$summary_stats <- renderUI({
       # Add the comuna code to the beginning of the summary paragraph
-      comuna_info <- paste0("<p>For comuna code <b>", input$codigo_comuna, "</b>:</p>")
+      comuna_info <- paste0("<p>Para el código de comuna <b>", input$codigo_comuna, "</b>:</p>")
       HTML(paste0(comuna_info, summary_stats$summary_paragraph))
     })
     
     # Final log message
-    output$console_logs <- renderText("Processing completed successfully!")
+    output$console_logs <- renderText("Procesamiento completado exitosamente!")
     
     return(list(
       plot = plot,
@@ -148,33 +148,44 @@ server <- function(input, output, session) {
   })
   
   
-  # Folder selection using shinyFiles
-  volumes <- c(Home = fs::path_home())  # Default to the user's home directory
-  shinyFileChoose(input, "folder", roots = volumes, session = session, filetypes = NULL)
-  
-  # Save plot functionality
+  # Save plot and summary functionality
   observeEvent(input$save_plot, {
     # Check if a plot has been generated
     req(processed_data())
     
-    # Get the selected folder path
-    folder_path <- parseFilePaths(volumes, input$folder)$datapath
-    if (is.null(folder_path)) {
-      output$console_logs <- renderText("Error: No folder selected. Please select a folder to save the plot.")
-      return()
+    # Create the folder structure
+    folder_path <- paste0(getwd(), "/BBDD/resultados/", input$codigo_comuna, "/", input$nombre_variable, "/", input$modelo, "/")
+    
+    # Create the directory if it doesn't exist
+    if (!dir.exists(folder_path)) {
+      dir.create(folder_path, recursive = TRUE)
     }
     
-    # Define the file name
-    file_name <- paste0("plot_", input$nombre_variable, "_", input$modelo, ".png")
-    full_path <- file.path(folder_path, file_name)
+    # Define the file names
+    plot_file_name <- paste0("grafico_", input$nombre_variable, "_", input$modelo, ".png")
+    summary_file_name <- paste0("resumen_", input$nombre_variable, "_", input$modelo, ".txt")
+    
+    # Full paths
+    plot_full_path <- file.path(folder_path, plot_file_name)
+    summary_full_path <- file.path(folder_path, summary_file_name)
     
     # Save the plot as a .png file
-    ggsave(full_path, plot = processed_data()$plot, width = 12, height = 8, units = "in", dpi = 300)
+    ggsave(plot_full_path, plot = processed_data()$plot, width = 12, height = 8, units = "in", dpi = 300)
+    
+    # Save the summary as a .txt file
+    # Convert HTML to plain text by removing HTML tags
+    summary_text <- gsub("<.*?>", "", processed_data()$summary_stats$summary_paragraph)
+    summary_text <- gsub("&nbsp;", " ", summary_text)
+    
+    # Add comuna information to the summary text
+    summary_text <- paste0("Resumen para la comuna ", input$codigo_comuna, ":\n\n", summary_text)
+    
+    # Write to file
+    writeLines(summary_text, summary_full_path)
     
     # Log the success message
-    output$console_logs <- renderText(paste("Plot saved successfully at:", full_path))
+    output$console_logs <- renderText(paste("Resultados guardados exitosamente en:", folder_path))
   })
-  
   
 }
 
