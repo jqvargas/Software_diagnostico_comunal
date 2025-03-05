@@ -201,6 +201,127 @@ plot_time_series <- function(data, modelo, nombre_variable, periodo_referencia) 
   return(p)
 }
 
+### Función 4) Calcular estadísticas de resumen
+
+compute_summary_statistics <- function(data, modelo, nombre_variable, periodo_referencia_ini, periodo_referencia_fin) {
+  print("Comenzando a calcular estadísticas de resumen...")
+  
+  # Get current year to calculate last 10 years
+  current_year <- as.numeric(format(Sys.Date(), "%Y"))
+  last_10_years_start <- current_year - 10
+  
+  # Filter data for the reference period
+  reference_data <- data %>%
+    filter(modelo == !!modelo & 
+           año >= periodo_referencia_ini & 
+           año <= periodo_referencia_fin) %>%
+    group_by(corrida, modelo) %>%
+    summarise(
+      reference_mean = mean(year_mean_value, na.rm = TRUE),
+      reference_sd = sd(year_mean_value, na.rm = TRUE),
+      reference_min = min(year_mean_value, na.rm = TRUE),
+      reference_max = max(year_mean_value, na.rm = TRUE)
+    ) %>%
+    ungroup()
+  
+  # Filter data for the last 10 years (or future projections if using climate model data)
+  recent_data <- data %>%
+    filter(modelo == !!modelo & año >= 2035 & año <= 2045) %>%
+    group_by(corrida, modelo) %>%
+    summarise(
+      recent_mean = mean(year_mean_value, na.rm = TRUE),
+      recent_sd = sd(year_mean_value, na.rm = TRUE),
+      recent_min = min(year_mean_value, na.rm = TRUE),
+      recent_max = max(year_mean_value, na.rm = TRUE)
+    ) %>%
+    ungroup()
+  
+  # Join the data and calculate changes
+  stats_combined <- reference_data %>%
+    left_join(recent_data, by = c("corrida", "modelo")) %>%
+    group_by(modelo) %>%
+    summarise(
+      ref_mean = mean(reference_mean, na.rm = TRUE),
+      ref_sd = mean(reference_sd, na.rm = TRUE),
+      ref_min = min(reference_min, na.rm = TRUE),
+      ref_max = max(reference_max, na.rm = TRUE),
+      recent_mean = mean(recent_mean, na.rm = TRUE),
+      recent_sd = mean(recent_sd, na.rm = TRUE),
+      recent_min = min(recent_min, na.rm = TRUE),
+      recent_max = max(recent_max, na.rm = TRUE),
+      percent_change = ((recent_mean - ref_mean) / abs(ref_mean)) * 100,
+      absolute_change = recent_mean - ref_mean
+    ) %>%
+    ungroup()
+  
+  # Create a dataframe with statistic names and values for display
+  stats_df <- data.frame(
+    statistic = c(
+      "Reference Period Mean",
+      "Reference Period Min",
+      "Reference Period Max",
+      "Recent Period Mean (2035-2045)",
+      "Recent Period Min",
+      "Recent Period Max",
+      "Absolute Change",
+      "Percent Change (%)"
+    ),
+    value = c(
+      round(stats_combined$ref_mean[1], 2),
+      round(stats_combined$ref_min[1], 2),
+      round(stats_combined$ref_max[1], 2),
+      round(stats_combined$recent_mean[1], 2),
+      round(stats_combined$recent_min[1], 2),
+      round(stats_combined$recent_max[1], 2),
+      round(stats_combined$absolute_change[1], 2),
+      round(stats_combined$percent_change[1], 2)
+    )
+  )
+  
+  # Generate a summary paragraph
+  variable_names <- list(
+    "tasmax" = "maximum temperature",
+    "tasmin" = "minimum temperature",
+    "pr" = "precipitation",
+    "vel" = "wind speed",
+    "rsds" = "solar radiation",
+    "huss" = "specific humidity"
+  )
+  
+  variable_units <- list(
+    "tasmax" = "°C",
+    "tasmin" = "°C",
+    "pr" = "mm",
+    "vel" = "m/s",
+    "rsds" = "W/m²",
+    "huss" = "kg/kg"
+  )
+  
+  # Get the full variable name and unit
+  var_name <- variable_names[[nombre_variable]]
+  var_unit <- variable_units[[nombre_variable]]
+  
+  # Create the summary paragraph
+  summary_paragraph <- paste0(
+    "<h4>Summary Statistics for ", var_name, " (", nombre_variable, ")</h4>",
+    "<p>Using the <b>", modelo, "</b> climate model:</p>",
+    "<p>During the reference period (", periodo_referencia_ini, "-", periodo_referencia_fin, "), the average ", 
+    var_name, " was <b>", round(stats_combined$ref_mean[1], 2), " ", var_unit, "</b>, ranging from ", 
+    round(stats_combined$ref_min[1], 2), " to ", round(stats_combined$ref_max[1], 2), " ", var_unit, ".</p>",
+    "<p>For the projected period (2035-2045), the model predicts an average ", var_name, " of <b>", 
+    round(stats_combined$recent_mean[1], 2), " ", var_unit, "</b>, ranging from ", 
+    round(stats_combined$recent_min[1], 2), " to ", round(stats_combined$recent_max[1], 2), " ", var_unit, ".</p>",
+    "<p>This represents a <b>", round(stats_combined$percent_change[1], 2), "%</b> change compared to the reference period, ",
+    "with an absolute change of <b>", round(stats_combined$absolute_change[1], 2), " ", var_unit, "</b>.</p>"
+  )
+  
+  # Return both the statistics dataframe and the summary paragraph
+  return(list(
+    stats_df = stats_df,
+    summary_paragraph = summary_paragraph
+  ))
+}
+
 # Ejemplo de uso
 
 #1) Procesar variable
@@ -227,6 +348,15 @@ plot_time_series <- function(data, modelo, nombre_variable, periodo_referencia) 
 #                                             "-", 
 #                                         periodo_referencia_fin)
 #                )
+
+#4) Calcular estadísticas de resumen
+#summary_stats <- compute_summary_statistics(
+#  data = relative_values,
+#  modelo = modelo,
+#  nombre_variable = nombre_variable,
+#  periodo_referencia_ini = periodo_referencia_ini,
+#  periodo_referencia_fin = periodo_referencia_fin
+#)
 
 
 

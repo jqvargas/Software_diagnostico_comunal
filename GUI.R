@@ -50,6 +50,10 @@ ui <- shinydashboardPlus::dashboardPage(
                                   plotOutput("time_series_plot", height = "600px")
                                 ),
                                 shinydashboard::box(
+                                  title = "Summary Statistics", width = 12, solidHeader = TRUE, status = "success",
+                                  htmlOutput("summary_stats")  # Display summary statistics here
+                                ),
+                                shinydashboard::box(
                                   title = "Logs", width = 12, solidHeader = TRUE, status = "warning",
                                   textOutput("console_logs")  # Display logs here
                                 )
@@ -102,7 +106,7 @@ server <- function(input, output, session) {
     
     # Step 3: Graficar resultados
     output$console_logs <- renderText("Step 3: Generating plot...")
-    plot<-plot_time_series(
+    plot <- plot_time_series(
       data = relative_values,
       modelo = input$modelo,
       nombre_variable = input$nombre_variable,
@@ -111,16 +115,36 @@ server <- function(input, output, session) {
                                   input$periodo_referencia_fin)
     )
     
+    # Step 4: Calculate summary statistics
+    output$console_logs <- renderText("Step 4: Calculating summary statistics...")
+    summary_stats <- compute_summary_statistics(
+      data = relative_values,
+      modelo = input$modelo,
+      nombre_variable = input$nombre_variable,
+      periodo_referencia_ini = input$periodo_referencia_ini,
+      periodo_referencia_fin = input$periodo_referencia_fin
+    )
+    
+    # Render the summary statistics paragraph
+    output$summary_stats <- renderUI({
+      # Add the comuna code to the beginning of the summary paragraph
+      comuna_info <- paste0("<p>For comuna code <b>", input$codigo_comuna, "</b>:</p>")
+      HTML(paste0(comuna_info, summary_stats$summary_paragraph))
+    })
+    
     # Final log message
     output$console_logs <- renderText("Processing completed successfully!")
     
-    return(plot)
+    return(list(
+      plot = plot,
+      summary_stats = summary_stats
+    ))
   })
   
   
   # Render the plot
   output$time_series_plot <- renderPlot({
-    processed_data()
+    processed_data()$plot
   })
   
   
@@ -145,7 +169,7 @@ server <- function(input, output, session) {
     full_path <- file.path(folder_path, file_name)
     
     # Save the plot as a .png file
-    ggsave(full_path, plot = processed_data(), width = 12, height = 8, units = "in", dpi = 300)
+    ggsave(full_path, plot = processed_data()$plot, width = 12, height = 8, units = "in", dpi = 300)
     
     # Log the success message
     output$console_logs <- renderText(paste("Plot saved successfully at:", full_path))
