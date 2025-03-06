@@ -10,6 +10,12 @@ comunas_df <- read.csv(paste0(getwd(), "/BBDD/ARCLIM/metadatos_comunas.csv"), se
 # Create a named vector for the dropdown (nombre_comuna as names, codigo_comuna as values)
 comunas_choices <- setNames(comunas_df$codigo_comuna, comunas_df$nombre_comuna)
 
+# Read the shapefile
+comunas_shp <- st_read("BBDD/divisiones_chile/Comunas/comunas.shp")
+# Join with metadata to get nombre_comuna
+comunas_shp <- comunas_shp %>%
+  left_join(comunas_df, by = c("cod_comuna" = "codigo_comuna"))
+
 ############ Libraries
 library(shiny)
 library(dplyr)
@@ -17,6 +23,7 @@ library(ggplot2)
 library(shinyFiles)
 library(shinydashboard)
 library(shinydashboardPlus)
+library(sf)
 ##########
 
 # Define GUI
@@ -36,31 +43,62 @@ ui <- shinydashboardPlus::dashboardPage(
   body = shinydashboard::dashboardBody(
     shinydashboard::tabItems(
       shinydashboard::tabItem(tabName = "future_data",
+                              # First row: Control panel, Time series plot, and Map
                               fluidRow(
-                                shinydashboard::box(
-                                  title = "Panel de Control", width = 4, solidHeader = TRUE, status = "primary",
-                                  selectInput("nombre_variable", "Seleccionar Variable:", 
-                                              choices = c("tasmax", "tasmin", "pr", "vel", "rsds", "huss")),
-                                  selectInput("nombre_comuna", "Nombre de Comuna:", choices = comunas_choices),
-                                  numericInput("periodo_referencia_ini", "Año Inicial del Período de Referencia:", value = 1980, min = 1950, max = 2020),
-                                  numericInput("periodo_referencia_fin", "Año Final del Período de Referencia:", value = 2010, min = 1950, max = 2020),
-                                  selectInput("modelo", "Seleccionar Modelo:", choices = NULL),  # Initially empty
-                                  actionButton("generate_plot", "Generar Gráfico", class = "btn-primary"),
-                                  br(),
-                                  br(),
-                                  actionButton("save_plot", "Guardar Resultados", class = "btn-success")  # Save button
+                                # Control panel (1/4 of width)
+                                column(width = 3,
+                                  shinydashboard::box(
+                                    title = "Panel de Control", width = NULL, solidHeader = TRUE, status = "primary",
+                                    selectInput("nombre_variable", "Seleccionar Variable:", 
+                                                choices = c("tasmax", "tasmin", "pr", "vel", "rsds", "huss")),
+                                    selectInput("nombre_comuna", "Nombre de Comuna:", choices = comunas_choices),
+                                    numericInput("periodo_referencia_ini", "Año Inicial del Período de Referencia:", value = 1980, min = 1950, max = 2020),
+                                    numericInput("periodo_referencia_fin", "Año Final del Período de Referencia:", value = 2010, min = 1950, max = 2020),
+                                    selectInput("modelo", "Seleccionar Modelo:", choices = NULL),
+                                    div(style = "margin-top: 20px;",
+                                      actionButton("generate_plot", "Generar Gráfico", class = "btn-primary", style = "width: 100%; margin-bottom: 10px;"),
+                                      actionButton("save_plot", "Guardar Resultados", class = "btn-success", style = "width: 100%;")
+                                    )
+                                  )
                                 ),
-                                shinydashboard::box(
-                                  title = "Gráfico", width = 8, solidHeader = TRUE, status = "info",
-                                  plotOutput("time_series_plot", height = "600px")
+                                
+                                # Time series plot (1/2 of width)
+                                column(width = 6,
+                                  shinydashboard::box(
+                                    title = "Gráfico", width = NULL, solidHeader = TRUE, status = "info",
+                                    plotOutput("time_series_plot")
+                                  )
                                 ),
-                                shinydashboard::box(
-                                  title = "Estadísticas de Resumen", width = 12, solidHeader = TRUE, status = "success",
-                                  htmlOutput("summary_stats")  # Display summary statistics here
+                                
+                                # Map (1/4 of width)
+                                column(width = 3,
+                                  shinydashboard::box(
+                                    title = "Mapa de Comuna", width = NULL, solidHeader = TRUE, status = "info",
+                                    plotOutput("spatial_plot")
+                                  )
+                                )
+                              ),
+                              
+                              # Second row: Summary stats and logs
+                              fluidRow(
+                                # Summary statistics (2/3 of width)
+                                column(width = 8,
+                                  shinydashboard::box(
+                                    title = "Estadísticas de Resumen", width = NULL, height = "300px", solidHeader = TRUE, status = "success",
+                                    div(style = "height: 230px; overflow-y: auto;",
+                                      htmlOutput("summary_stats")
+                                    )
+                                  )
                                 ),
-                                shinydashboard::box(
-                                  title = "Registros", width = 12, solidHeader = TRUE, status = "warning",
-                                  textOutput("console_logs")  # Display logs here
+                                
+                                # Logs (1/3 of width)
+                                column(width = 4,
+                                  shinydashboard::box(
+                                    title = "Registros", width = NULL, height = "300px", solidHeader = TRUE, status = "warning",
+                                    div(style = "height: 230px; overflow-y: auto;",
+                                      textOutput("console_logs")
+                                    )
+                                  )
                                 )
                               )
       )
@@ -80,6 +118,33 @@ server <- function(input, output, session) {
     nombre_comuna <- names(which(comunas_choices == codigo_comuna))
     selected_comuna(list(codigo = codigo_comuna, nombre = nombre_comuna))
   })
+  
+  # Render the spatial plot
+  output$spatial_plot <- renderPlot({
+    # Only render when generate button is pressed
+    req(input$generate_plot)
+    
+    # Get the selected comuna info
+    comuna_info <- selected_comuna()
+    
+    # Filter to show only the selected comuna
+    selected_polygon <- comunas_shp %>%
+      filter(cod_comuna == comuna_info$codigo)
+    
+    # Create the plot
+    ggplot() +
+      geom_sf(data = selected_polygon, fill = "lightblue", color = "white") +
+      theme_minimal() +
+      theme(
+        plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        panel.grid = element_blank(),
+        plot.margin = margin(0, 0, 0, 0, "pt")
+      ) +
+      ggtitle(comuna_info$nombre) +
+      coord_sf(expand = FALSE)
+  }, height = function() 300, width = function() 300)
   
   # Dynamically update the modelo dropdown based on the selected variable
   observeEvent(input$nombre_variable, {
@@ -247,6 +312,7 @@ server <- function(input, output, session) {
   })
   
 }
+
 
 # Run the application
 shinyApp(ui, server)
