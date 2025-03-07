@@ -4,6 +4,9 @@ source(paste0(getwd(), "/procesar_historico.R"))  # Add source for historical pr
 source(paste0(getwd(), "/procesar_uso_suelo.R"))  # Add source for land use processing
 source(paste0(getwd(), "/procesar_topografia.R"))  # Add source for topography processing
 
+# Explicitly import select from dplyr
+select <- dplyr::select
+
 # Read configuration files
 print("Loading available models...")
 available_models_df <- read.csv(paste0(getwd(), "/BBDD/ARCLIM/modelos_disponibles.csv"))
@@ -29,13 +32,14 @@ comunas_shp <- comunas_shp %>%
 
 ############ Libraries
 library(shiny)
-library(dplyr)
+library(dplyr, warn.conflicts = FALSE)  # Load dplyr first and suppress conflict warnings
 library(ggplot2)
 library(shinyFiles)
 library(shinydashboard)
 library(shinydashboardPlus)
 library(sf)
 library(stringi)
+library(tidyr)  # Add tidyr for data manipulation
 ##########
 
 # Define GUI

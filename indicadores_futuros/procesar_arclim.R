@@ -528,7 +528,3 @@ compute_summary_statistics <- function(data, modelo, nombre_variable, periodo_re
 #  periodo_referencia_ini = periodo_referencia_ini,
 #  periodo_referencia_fin = periodo_referencia_fin
 #)
-
-
-
-
