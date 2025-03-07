@@ -17,7 +17,7 @@ get_region_number <- function(nombre_comuna) {
   
   # Find region number for the comuna
   region_info <- metadata %>%
-    filter(tolower(nombre_comuna) == tolower(nombre_comuna)) %>%
+    filter(tolower(nombre_comuna) == tolower(.data$nombre_comuna)) %>%
     select(codigo_region)
   
   if (nrow(region_info) == 0) {
@@ -137,4 +137,4 @@ get_available_comunas_land_use <- function() {
 
 # Example usage:
 # comunas_disponibles <- get_available_comunas_land_use()
-# datos_comuna <- get_land_use_data("Santiago") 
+# datos_comuna <- get_land_use_data("PUERTO VARAS") 
