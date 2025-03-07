@@ -18,13 +18,13 @@ get_region_number <- function(nombre_comuna) {
   # Find region number for the comuna
   region_info <- metadata %>%
     filter(tolower(nombre_comuna) == tolower(nombre_comuna)) %>%
-    select(region_numero)
+    select(codigo_region)
   
   if (nrow(region_info) == 0) {
     stop(paste("No se encontró la comuna:", nombre_comuna))
   }
   
-  return(region_info$region_numero[1])
+  return(region_info$codigo_region[1])
 }
 
 #' Find the most recent land use shapefile folder for a given region
