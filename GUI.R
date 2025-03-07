@@ -2,6 +2,7 @@
 source(paste0(getwd(), "/indicadores_futuros/procesar_arclim.R"))
 source(paste0(getwd(), "/procesar_historico.R"))  # Add source for historical processing
 source(paste0(getwd(), "/procesar_uso_suelo.R"))  # Add source for land use processing
+source(paste0(getwd(), "/procesar_topografia.R"))  # Add source for topography processing
 
 # Read configuration files
 print("Loading available models...")
@@ -49,7 +50,8 @@ ui <- shinydashboardPlus::dashboardPage(
       shinydashboard::menuItem("Selección de Diagnóstico", tabName = "data_selection", icon = icon("chart-line")),
       shinydashboard::menuSubItem("Diagnóstico Clima Histórico", tabName = "historical_data", icon = icon("clock")),
       shinydashboard::menuSubItem("Diagnóstico Clima Futuro", tabName = "future_data", icon = icon("arrow-right")),
-      shinydashboard::menuSubItem("Usos de la Tierra", tabName = "land_use_data", icon = icon("tree"))
+      shinydashboard::menuSubItem("Usos de la Tierra", tabName = "land_use_data", icon = icon("tree")),
+      shinydashboard::menuSubItem("Topografía", tabName = "topography_data", icon = icon("mountain"))
     )
   ),
   body = shinydashboard::dashboardBody(
@@ -230,6 +232,59 @@ ui <- shinydashboardPlus::dashboardPage(
               solidHeader = TRUE, status = "warning",
               div(style = "height: 230px; overflow-y: auto;",
                 textOutput("land_use_logs")
+              )
+            )
+          )
+        )
+      ),
+
+      # Topography Data Tab
+      shinydashboard::tabItem(tabName = "topography_data",
+        # First row: Control panel and Map
+        fluidRow(
+          # Control panel (1/4 of width)
+          column(width = 3,
+            shinydashboard::box(
+              title = "Panel de Control", width = NULL, solidHeader = TRUE, status = "primary",
+              uiOutput("topo_comuna_selector"),  # Dynamic comuna selector
+              div(style = "margin-top: 20px;",
+                actionButton("generate_topo", "Generar Análisis", 
+                           class = "btn-primary", style = "width: 100%; margin-bottom: 10px;"),
+                actionButton("save_topo", "Guardar Resultados", 
+                           class = "btn-success", style = "width: 100%;")
+              )
+            )
+          ),
+          
+          # Map (3/4 of width)
+          column(width = 9,
+            shinydashboard::box(
+              title = "Mapa Topográfico", width = NULL, solidHeader = TRUE, status = "info",
+              plotOutput("topo_plot", height = "500px")
+            )
+          )
+        ),
+        
+        # Second row: Summary stats and logs
+        fluidRow(
+          # Summary statistics (2/3 of width)
+          column(width = 8,
+            shinydashboard::box(
+              title = "Estadísticas de Resumen", width = NULL, height = "300px", 
+              solidHeader = TRUE, status = "success",
+              div(style = "height: 230px; overflow-y: auto;",
+                verbatimTextOutput("topo_summary")
+              )
+            )
+          ),
+          
+          # Logs (1/3 of width)
+          column(width = 4,
+            shinydashboard::box(
+              title = "Registros", width = NULL, height = "300px", 
+              solidHeader = TRUE, status = "warning",
+              div(style = "height: 230px; overflow-y: auto;",
+                textOutput("topo_logs")
               )
             )
           )
@@ -562,7 +617,7 @@ server <- function(input, output, session) {
   # Dynamic comuna selector for land use data
   output$land_use_comuna_selector <- renderUI({
     tryCatch({
-      available_comunas <- get_available_comunas_land_use()
+      available_comunas<-get_available_comunas(variable="temp")
       if (length(available_comunas) > 0) {
         selectInput("land_use_comuna", "Nombre de Comuna:",
                    choices = sort(available_comunas),
@@ -651,6 +706,86 @@ server <- function(input, output, session) {
     writeLines(land_use_data()$analysis$summary_text, summary_file)
     
     output$land_use_logs <- renderText(paste("Resultados guardados en:", folder_path))
+  })
+
+  # Dynamic comuna selector for topography data
+  output$topo_comuna_selector <- renderUI({
+    tryCatch({
+      available_comunas <- get_available_comunas(variable="temp")
+      if (length(available_comunas) > 0) {
+        selectInput("topo_comuna", "Nombre de Comuna:",
+                   choices = sort(available_comunas),
+                   selected = NULL)
+      } else {
+        div(
+          style = "color: red;",
+          "No se encontraron comunas con datos topográficos disponibles"
+        )
+      }
+    }, error = function(e) {
+      div(
+        style = "color: red;",
+        paste("Error al cargar comunas:", e$message)
+      )
+    })
+  })
+
+  # Process topography data and generate outputs
+  topo_data <- eventReactive(input$generate_topo, {
+    req(input$topo_comuna)
+    
+    output$topo_logs <- renderText("Procesando datos topográficos...")
+    
+    # Get the data and generate plot
+    tryCatch({
+      print(paste("Processing comuna:", input$topo_comuna))
+      
+      result <- plot_topografia(input$topo_comuna)
+      
+      output$topo_logs <- renderText("Procesamiento completado exitosamente!")
+      
+      return(result)
+    }, error = function(e) {
+      output$topo_logs <- renderText(paste("Error:", e$message))
+      return(NULL)
+    })
+  })
+  
+  # Render the topography plot
+  output$topo_plot <- renderPlot({
+    req(topo_data())
+    topo_data()$plot
+  })
+  
+  # Render the summary text
+  output$topo_summary <- renderText({
+    req(topo_data())
+    topo_data()$summary
+  })
+  
+  # Save topography results
+  observeEvent(input$save_topo, {
+    req(topo_data(), input$topo_comuna)
+    
+    # Create the folder structure
+    folder_path <- paste0(getwd(), "/BBDD/resultados/topografia/", input$topo_comuna, "/")
+    
+    if (!dir.exists(folder_path)) {
+      dir.create(folder_path, recursive = TRUE)
+    }
+    
+    # Save plot
+    plot_file <- paste0(folder_path, "mapa_topografico.png")
+    # For base R plots, we need to use png() and dev.off()
+    png(plot_file, width = 12, height = 8, units = "in", res = 300)
+    replayPlot(topo_data()$plot)
+    dev.off()
+    
+    # Save summary
+    summary_file <- paste0(folder_path, "resumen_topografico.txt")
+    writeLines(topo_data()$summary, summary_file)
+    
+    output$topo_logs <- renderText(paste("Resultados guardados en:", folder_path))
   })
 }
 

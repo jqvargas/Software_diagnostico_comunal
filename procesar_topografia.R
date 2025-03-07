@@ -146,10 +146,20 @@ generate_topo_summary <- function(raster_masked) {
 #' @return List containing plot object and summary text
 plot_topografia <- function(nombre_comuna) {
   # Get raster data
+  print("Leyendo raster de topografia")
   raster_data <- read_raster_topo(nombre_comuna)
-  # Define the CRS using the PROJ string
+  region_num <- get_region_number(nombre_comuna_input = nombre_comuna)
+  # Define CRS based on region_num
+if (region_num < 8 || region_num == 13 || region_num == 15) {
+  # UTM Zone 19S for regions 1-7, 13, and 15
+  crs(raster_data) <- "+proj=utm +zone=19 +south +datum=WGS84 +units=m +no_defs"
+} else if (region_num == 16) {
+  # SIRGAS-Chile 2002 for region 16
+  crs(raster_data) <- "+proj=longlat +datum=SIRGAS-Chile +no_defs"
+} else if (region_num %in% c(8, 9, 10, 11, 12, 14)) {
+  # UTM Zone 18S for regions 8, 9, 10, 11, 12, and 14
   crs(raster_data) <- "+proj=utm +zone=18 +south +datum=WGS84 +units=m +no_defs"
-  
+}
   # Get comuna boundaries
   comuna_boundaries <- get_comuna_boundaries(nombre_comuna)
   
@@ -157,14 +167,20 @@ plot_topografia <- function(nombre_comuna) {
   comuna_boundaries <- st_transform(comuna_boundaries, crs(raster_data))
   
   # Crop and mask raster to comuna boundaries
+  print("Cortando y enmascarando raster")
   raster_cropped <- crop(raster_data, extent(comuna_boundaries))
+  print("Raster cortado")
   raster_masked <- mask(raster_cropped, comuna_boundaries)
+  print("Raster enmascarado")
   
   # Generate topographic summary
+  print("Generando resumen topográfico")
   summary_text <- generate_topo_summary(raster_masked)
   
   # Create the plot
+  print("Creando plot")
   p <- create_elevation_plot(raster_masked, comuna_boundaries)
+  print("Plot creado")
   
   # Return both plot and summary
   return(list(
@@ -250,6 +266,6 @@ get_available_comunas_topo <- function() {
 }
 
 # Example usage:
-# p <- plot_topografia("PUERTO VARAS")
+# p <- plot_topografia("Lo Barnechea")
 
 # ggsave("topografia_puerto_varas.png", p, width = 10, height = 8, dpi = 300) 
