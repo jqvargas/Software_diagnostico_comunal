@@ -86,9 +86,9 @@ find_land_use_folder <- function(region_number) {
   return(file.path(base_path, most_recent$folder))
 }
 
-#' Read land use shapefile for a given comuna
+#' Read and simplify land use shapefile for a given comuna
 #' @param nombre_comuna Character string with the comuna name
-#' @return sf object with land use data for the comuna
+#' @return sf object with simplified land use data for the comuna
 get_land_use_data <- function(nombre_comuna) {
   print(paste("Procesando datos de uso de suelo para comuna:", nombre_comuna))
   
@@ -118,7 +118,7 @@ get_land_use_data <- function(nombre_comuna) {
   
   print(paste("Leyendo shapefile:", basename(shapefile_path)))
   
-  # Read and filter data
+  # Read data
   land_use_data <- st_read(shapefile_path, quiet = TRUE)
   
   # Verify that the NOM_COM column exists
@@ -139,8 +139,44 @@ get_land_use_data <- function(nombre_comuna) {
     stop(paste("No se encontraron datos para la comuna:", nombre_comuna))
   }
   
-  print("Datos de uso de suelo cargados exitosamente")
-  return(comuna_data)
+  # Define the IPCC columns we want to keep
+  ipcc_columns <- c(
+    "SUB_IPCC01",  # 2001
+    "SUB_IPCC13",  # 2013
+    "SUB_IPCC16",  # 2016
+    "SUB_IPCC17",  # 2017
+    "SUB_IPCC19",  # 2019
+    "SUB_IPCC21",  # 2021
+    "SUB_IPCC23"   # 2023
+  )
+  
+  # Verify which IPCC columns exist in the data
+  available_ipcc_cols <- ipcc_columns[ipcc_columns %in% names(comuna_data)]
+  
+  if (length(available_ipcc_cols) == 0) {
+    print("Columnas disponibles en el shapefile:")
+    print(names(comuna_data))
+    stop("No se encontraron columnas de clasificación IPCC en el shapefile")
+  }
+  
+  print("Columnas IPCC encontradas:")
+  print(available_ipcc_cols)
+  
+  # Select only IPCC columns and geometry
+  simplified_data <- comuna_data %>%
+    select(all_of(available_ipcc_cols), geometry)
+  
+  # Group by all IPCC columns and merge geometries
+  print("Simplificando geometrías...")
+  merged_data <- simplified_data %>%
+    group_by(across(all_of(available_ipcc_cols))) %>%
+    summarise(geometry = st_union(geometry), .groups = "drop")
+  
+  print("Datos de uso de suelo simplificados exitosamente")
+  print(paste("Número de polígonos original:", nrow(comuna_data)))
+  print(paste("Número de polígonos después de la simplificación:", nrow(merged_data)))
+  
+  return(merged_data)
 }
 
 #' Get available comunas for land use data
@@ -172,6 +208,103 @@ get_available_comunas_land_use <- function() {
   return(sort(unique(available_comunas)))
 }
 
+#' Plot land use data with comuna boundary
+#' @param nombre_comuna Character string with the comuna name
+#' @param land_use_data sf object with land use data (output from get_land_use_data)
+#' @param year Integer with the year to plot (2001, 2012, 2013, 2015, 2016, 2017, 2019, 2021, or 2023)
+#' @return ggplot object with the plot
+plot_land_use_with_boundary <- function(nombre_comuna, land_use_data, year) {
+  # Validate year input
+  valid_years <- c(2001, 2012, 2013, 2015, 2016, 2017, 2019, 2021, 2023)
+  if (!year %in% valid_years) {
+    stop(paste("Año inválido. Los años disponibles son:", paste(valid_years, collapse = ", ")))
+  }
+  
+  # Convert year to IPCC column name
+  year_suffix <- sprintf("%02d", year %% 100)
+  ipcc_col <- paste0("SUB_IPCC", year_suffix)
+  
+  # Check if the column exists in the data
+  if (!ipcc_col %in% names(land_use_data)) {
+    available_years <- gsub("SUB_IPCC", "", names(land_use_data)[grep("^SUB_IPCC", names(land_use_data))])
+    available_years <- paste0("20", available_years)
+    stop(paste("No hay datos para el año", year, 
+               "\nAños disponibles:", paste(available_years, collapse = ", ")))
+  }
+  
+  # Read comuna boundaries
+  comunas_shp <- st_read("BBDD/divisiones_chile/Comunas/comunas.shp", quiet = TRUE)
+  
+  # Filter for the specific comuna
+  nombre_comuna_clean <- toupper(trimws(nombre_comuna))
+  comuna_boundary <- comunas_shp %>%
+    filter(toupper(trimws(Comuna)) == nombre_comuna_clean)
+  
+  if (nrow(comuna_boundary) == 0) {
+    print("Comunas disponibles en el shapefile de límites:")
+    print(head(sort(unique(comunas_shp$Comuna)), 10))
+    stop(paste("No se encontró el límite de la comuna:", nombre_comuna))
+  }
+  
+  # Define color mapping for IPCC categories (matching exact names in the data)
+  color_mapping <- c(
+    "Áreas Desprovistas de Vegetación" = "#A9A9A9",
+    "Asentamientos" = "#D73027",
+    "Bosque Nativo" = "#1A9850",
+    "Cuerpos de Agua" = "#4575B4",
+    "Humedales" = "#91BFDB",
+    "Matorral" = "#F6E8C3",
+    "Matorral Arborescente" = "#A6D96A",
+    "Nieves y Glaciares" = "#FFFFFF",
+    "Plantación" = "#66A61E",
+    "Praderas" = "#FFD700",
+    "Tierras de Cultivo" = "#E67E22"
+  )
+  
+  # Get unique categories in the data
+  categories <- unique(land_use_data[[ipcc_col]])
+  
+  # Print available categories for debugging
+  print("Categorías presentes en los datos:")
+  print(categories)
+  
+  # Print categories that don't have a color assigned
+  missing_categories <- setdiff(categories, names(color_mapping))
+  if (length(missing_categories) > 0) {
+    print("ADVERTENCIA: Las siguientes categorías no tienen color asignado:")
+    print(missing_categories)
+  }
+  
+  # Create the plot
+  plot <- ggplot() +
+    # Add land use polygons with colors
+    geom_sf(data = land_use_data, aes(fill = factor(.data[[ipcc_col]])), alpha = 0.9) +
+    # Add comuna boundary
+    geom_sf(data = comuna_boundary, fill = NA, color = "black", size = 1) +
+    # Customize the appearance
+    theme_minimal() +
+    theme(
+      plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+      legend.position = "right",  # Changed to right for better visibility
+      legend.title = element_text(size = 10),
+      legend.text = element_text(size = 8)
+    ) +
+    # Add labels
+    labs(
+      title = paste("Uso de Suelo -", nombre_comuna, "-", year),
+      fill = paste("Categoría IPCC", year)
+    ) +
+    # Use the predefined color mapping
+    scale_fill_manual(values = color_mapping, drop = FALSE)
+  
+  # Force the plot to be displayed
+  print(plot)
+  
+  # Return the plot object
+  invisible(plot)
+}
+
 # Example usage:
-# comunas_disponibles <- get_available_comunas_land_use()
-# datos_comuna <- get_land_use_data("puerto varas") 
+# datos_comuna <- get_land_use_data("puerto varas")
+# plot <- plot_land_use_with_boundary("puerto varas", datos_comuna, 2023)  # For 2023 data
+# plot <- plot_land_use_with_boundary("puerto varas", datos_comuna, 2001)  # For 2001 data
