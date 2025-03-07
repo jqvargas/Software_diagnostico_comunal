@@ -1,10 +1,16 @@
 ####### Source data
 source(paste0(getwd(), "/indicadores_futuros/procesar_arclim.R"))
 source(paste0(getwd(), "/procesar_historico.R"))  # Add source for historical processing
+source(paste0(getwd(), "/procesar_uso_suelo.R"))  # Add source for land use processing
 
 # Read configuration files
+print("Loading available models...")
 available_models_df <- read.csv(paste0(getwd(), "/BBDD/ARCLIM/modelos_disponibles.csv"))
+print("Available models columns:")
+print(names(available_models_df))
 available_models <- split(available_models_df$modelo, available_models_df$variable)
+print("Available models by variable:")
+print(str(available_models))
 
 # Read comuna metadata and create choices
 comunas_df <- read.csv(paste0(getwd(), "/BBDD/ARCLIM/metadatos_comunas.csv"), sep = ";")
@@ -34,15 +40,16 @@ library(stringi)
 # Define GUI
 ui <- shinydashboardPlus::dashboardPage(
   header = shinydashboardPlus::dashboardHeader(
-    title = "Panel de Datos Climáticos",
+    title = "Herramienta de Diagnóstico Comunal",
     titleWidth = 300
   ),
   sidebar = shinydashboardPlus::dashboardSidebar(
     width = 300,
     shinydashboard::sidebarMenu(
-      shinydashboard::menuItem("Selección de Datos", tabName = "data_selection", icon = icon("chart-line")),
-      shinydashboard::menuSubItem("Datos Futuros", tabName = "future_data", icon = icon("arrow-right")),
-      shinydashboard::menuSubItem("Datos Históricos", tabName = "historical_data", icon = icon("clock"))
+      shinydashboard::menuItem("Selección de Diagnóstico", tabName = "data_selection", icon = icon("chart-line")),
+      shinydashboard::menuSubItem("Diagnóstico Clima Histórico", tabName = "historical_data", icon = icon("clock")),
+      shinydashboard::menuSubItem("Diagnóstico Clima Futuro", tabName = "future_data", icon = icon("arrow-right")),
+      shinydashboard::menuSubItem("Usos de la Tierra", tabName = "land_use_data", icon = icon("tree"))
     )
   ),
   body = shinydashboard::dashboardBody(
@@ -174,6 +181,59 @@ ui <- shinydashboardPlus::dashboardPage(
             )
           )
         )
+      ),
+
+      # Land Use Data Tab (new)
+      shinydashboard::tabItem(tabName = "land_use_data",
+        # First row: Control panel, Time series plot, and Map
+        fluidRow(
+          # Control panel (1/4 of width)
+          column(width = 3,
+            shinydashboard::box(
+              title = "Panel de Control", width = NULL, solidHeader = TRUE, status = "primary",
+              uiOutput("land_use_comuna_selector"),  # Changed to dynamic UI
+              div(style = "margin-top: 20px;",
+                actionButton("generate_land_use", "Generar Análisis", 
+                           class = "btn-primary", style = "width: 100%; margin-bottom: 10px;"),
+                actionButton("save_land_use", "Guardar Resultados", 
+                           class = "btn-success", style = "width: 100%;")
+              )
+            )
+          ),
+          
+          # Map (2/3 of width)
+          column(width = 9,
+            shinydashboard::box(
+              title = "Mapa de Uso de Suelo", width = NULL, solidHeader = TRUE, status = "info",
+              plotOutput("land_use_plot", height = "500px")
+            )
+          )
+        ),
+        
+        # Second row: Summary stats and logs
+        fluidRow(
+          # Summary statistics (2/3 of width)
+          column(width = 8,
+            shinydashboard::box(
+              title = "Estadísticas de Resumen", width = NULL, height = "300px", 
+              solidHeader = TRUE, status = "success",
+              div(style = "height: 230px; overflow-y: auto;",
+                verbatimTextOutput("land_use_summary")
+              )
+            )
+          ),
+          
+          # Logs (1/3 of width)
+          column(width = 4,
+            shinydashboard::box(
+              title = "Registros", width = NULL, height = "300px", 
+              solidHeader = TRUE, status = "warning",
+              div(style = "height: 230px; overflow-y: auto;",
+                textOutput("land_use_logs")
+              )
+            )
+          )
+        )
       )
     )
   )
@@ -296,6 +356,23 @@ server <- function(input, output, session) {
   # Render the plot
   output$time_series_plot <- renderPlot({
     processed_data()$plot
+  })
+  
+  # Dynamically update the modelo dropdown based on the selected variable
+  observeEvent(input$nombre_variable, {
+    if (is.null(input$nombre_variable)) {
+      updateSelectInput(session, "modelo", choices = NULL)
+      return()
+    }
+    
+    # Get the available models for the selected variable
+    selected_models <- available_models[[input$nombre_variable]]
+    
+    # Add "Todos" as the first option
+    model_choices <- c("Todos", selected_models)
+    
+    # Update the modelo dropdown with the available models
+    updateSelectInput(session, "modelo", choices = model_choices)
   })
   
   # Save plot and summary functionality
@@ -480,6 +557,100 @@ server <- function(input, output, session) {
     selectInput("hist_nombre_comuna", "Nombre de Comuna:", 
                 choices = sort(comunas_disponibles),
                 selected = NULL)
+  })
+
+  # Dynamic comuna selector for land use data
+  output$land_use_comuna_selector <- renderUI({
+    tryCatch({
+      available_comunas <- get_available_comunas_land_use()
+      if (length(available_comunas) > 0) {
+        selectInput("land_use_comuna", "Nombre de Comuna:",
+                   choices = sort(available_comunas),
+                   selected = NULL)
+      } else {
+        div(
+          style = "color: red;",
+          "No se encontraron comunas con datos de uso de suelo disponibles"
+        )
+      }
+    }, error = function(e) {
+      div(
+        style = "color: red;",
+        paste("Error al cargar comunas:", e$message)
+      )
+    })
+  })
+
+  # Process land use data and generate outputs
+  land_use_data <- eventReactive(input$generate_land_use, {
+    req(input$land_use_comuna)
+    
+    output$land_use_logs <- renderText("Procesando datos de uso de suelo...")
+    
+    # Get the data
+    tryCatch({
+      # Print debug information
+      print(paste("Processing comuna:", input$land_use_comuna))
+      
+      data <- get_land_use_data(input$land_use_comuna)
+      
+      # Get the most recent year
+      ipcc_cols <- sort(names(data)[grep("^SUB_IPCC", names(data))])
+      latest_year <- as.numeric(paste0("20", substr(tail(ipcc_cols, 1), 9, 10)))
+      
+      # Generate analysis
+      analysis <- analyze_land_use_changes(data, input$land_use_comuna)
+      
+      # Generate plot
+      plot <- plot_land_use_with_boundary(input$land_use_comuna, data, latest_year)
+      
+      output$land_use_logs <- renderText("Procesamiento completado exitosamente!")
+      
+      list(
+        data = data,
+        analysis = analysis,
+        plot = plot,
+        year = latest_year
+      )
+    }, error = function(e) {
+      output$land_use_logs <- renderText(paste("Error:", e$message))
+      return(NULL)
+    })
+  })
+  
+  # Render the land use plot
+  output$land_use_plot <- renderPlot({
+    req(land_use_data())
+    land_use_data()$plot
+  })
+  
+  # Render the summary text
+  output$land_use_summary <- renderText({
+    req(land_use_data())
+    land_use_data()$analysis$summary_text
+  })
+  
+  # Save land use results
+  observeEvent(input$save_land_use, {
+    req(land_use_data(), input$land_use_comuna)
+    
+    # Create the folder structure
+    folder_path <- paste0(getwd(), "/BBDD/resultados/usos_suelo/", input$land_use_comuna, "/")
+    
+    if (!dir.exists(folder_path)) {
+      dir.create(folder_path, recursive = TRUE)
+    }
+    
+    # Save plot
+    plot_file <- paste0(folder_path, "mapa_uso_suelo_", land_use_data()$year, ".png")
+    ggsave(plot_file, plot = land_use_data()$plot, 
+           width = 12, height = 8, units = "in", dpi = 300)
+    
+    # Save summary
+    summary_file <- paste0(folder_path, "resumen_uso_suelo.txt")
+    writeLines(land_use_data()$analysis$summary_text, summary_file)
+    
+    output$land_use_logs <- renderText(paste("Resultados guardados en:", folder_path))
   })
 }
 
