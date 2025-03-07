@@ -155,7 +155,7 @@ if (region_num < 8 || region_num == 13 || region_num == 15) {
   crs(raster_data) <- "+proj=utm +zone=19 +south +datum=WGS84 +units=m +no_defs"
 } else if (region_num == 16) {
   # SIRGAS-Chile 2002 for region 16
-  crs(raster_data) <- "+proj=longlat +datum=SIRGAS-Chile +no_defs"
+  crs(raster_data) <- "+init=epsg:5360"
 } else if (region_num %in% c(8, 9, 10, 11, 12, 14)) {
   # UTM Zone 18S for regions 8, 9, 10, 11, 12, and 14
   crs(raster_data) <- "+proj=utm +zone=18 +south +datum=WGS84 +units=m +no_defs"
