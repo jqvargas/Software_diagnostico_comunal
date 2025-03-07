@@ -139,38 +139,45 @@ get_land_use_data <- function(nombre_comuna) {
     stop(paste("No se encontraron datos para la comuna:", nombre_comuna))
   }
   
-  # Define the IPCC columns we want to keep
-  ipcc_columns <- c(
-    "SUB_IPCC01",  # 2001
-    "SUB_IPCC13",  # 2013
-    "SUB_IPCC16",  # 2016
-    "SUB_IPCC17",  # 2017
-    "SUB_IPCC19",  # 2019
-    "SUB_IPCC21",  # 2021
-    "SUB_IPCC23"   # 2023
-  )
+  # Dynamically identify IPCC columns
+  ipcc_columns <- grep("^SUB_IPCC\\d{2}$", names(comuna_data), value = TRUE, ignore.case = TRUE)
   
-  # Verify which IPCC columns exist in the data
-  available_ipcc_cols <- ipcc_columns[ipcc_columns %in% names(comuna_data)]
-  
-  if (length(available_ipcc_cols) == 0) {
+  if (length(ipcc_columns) == 0) {
     print("Columnas disponibles en el shapefile:")
     print(names(comuna_data))
     stop("No se encontraron columnas de clasificación IPCC en el shapefile")
   }
   
   print("Columnas IPCC encontradas:")
-  print(available_ipcc_cols)
+  print(ipcc_columns)
   
-  # Select only IPCC columns and geometry
+  # Verify SHAPE_Area column exists
+  area_col <- "SHAPE_Area"
+  if (!area_col %in% names(comuna_data)) {
+    print("ADVERTENCIA: No se encontró la columna SHAPE_Area, se calculará el área usando la geometría")
+    # Calculate area if not present
+    comuna_data <- comuna_data %>%
+      st_transform(32719) %>%  # Transform to UTM zone 19S for accurate area calculation
+      mutate(SHAPE_Area = as.numeric(st_area(.)) / 10000)  # Convert to hectares
+  } else {
+    # Convert existing SHAPE_Area to hectares if it's in square meters
+    comuna_data <- comuna_data %>%
+      mutate(SHAPE_Area = as.numeric(SHAPE_Area) / 10000)
+  }
+  
+  # Select IPCC columns, SHAPE_Area and geometry
   simplified_data <- comuna_data %>%
-    select(all_of(available_ipcc_cols), geometry)
+    select(all_of(c(ipcc_columns, area_col)), geometry)
   
-  # Group by all IPCC columns and merge geometries
+  # Group by all IPCC columns and sum areas
   print("Simplificando geometrías...")
   merged_data <- simplified_data %>%
-    group_by(across(all_of(available_ipcc_cols))) %>%
-    summarise(geometry = st_union(geometry), .groups = "drop")
+    group_by(across(all_of(ipcc_columns))) %>%
+    summarise(
+      SHAPE_Area = sum(SHAPE_Area),
+      geometry = st_union(geometry),
+      .groups = "drop"
+    )
   
   print("Datos de uso de suelo simplificados exitosamente")
   print(paste("Número de polígonos original:", nrow(comuna_data)))
@@ -304,7 +311,137 @@ plot_land_use_with_boundary <- function(nombre_comuna, land_use_data, year) {
   invisible(plot)
 }
 
+#' Analyze land use changes over time
+#' @param land_use_data sf object with land use data (output from get_land_use_data)
+#' @param nombre_comuna Character string with the comuna name
+#' @return List containing summary statistics and text
+analyze_land_use_changes <- function(land_use_data, nombre_comuna) {
+  # Get all IPCC columns in chronological order
+  ipcc_cols <- sort(names(land_use_data)[grep("^SUB_IPCC", names(land_use_data))])
+  
+  if (length(ipcc_cols) == 0) {
+    stop("No se encontraron columnas de clasificación IPCC en los datos")
+  }
+  
+  # Create year mapping
+  year_mapping <- sapply(ipcc_cols, function(col) {
+    year_suffix <- substr(col, 9, 10)
+    as.numeric(ifelse(as.numeric(year_suffix) > 50, 
+                     paste0("19", year_suffix), 
+                     paste0("20", year_suffix)))
+  })
+  
+  # Calculate areas for each category in each year
+  area_stats <- lapply(ipcc_cols, function(col) {
+    # Calculate area for each category using SHAPE_Area
+    areas <- land_use_data %>%
+      group_by(!!sym(col)) %>%
+      summarise(
+        area_ha = sum(SHAPE_Area)  # Area is already in hectares
+      ) %>%
+      st_drop_geometry()
+    
+    # Calculate total area and percentages
+    total_area <- sum(areas$area_ha)
+    areas$percentage <- areas$area_ha / total_area * 100
+    
+    # Rename columns
+    names(areas)[1] <- "categoria"
+    areas$year <- year_mapping[col]
+    
+    return(areas)
+  })
+  
+  # Combine all years into one dataframe
+  all_stats <- do.call(rbind, area_stats)
+  
+  # Calculate rates of change
+  changes <- list()
+  if (length(ipcc_cols) > 1) {
+    # Get unique categories
+    categories <- unique(all_stats$categoria)
+    
+    # Calculate changes for each category
+    for (cat in categories) {
+      cat_data <- all_stats[all_stats$categoria == cat, ]
+      if (nrow(cat_data) > 1) {
+        # Calculate annual rate of change
+        years_diff <- diff(cat_data$year)
+        perc_diff <- diff(cat_data$percentage)
+        annual_change <- perc_diff / years_diff
+        
+        changes[[cat]] <- data.frame(
+          categoria = cat,
+          cambio_anual_promedio = mean(annual_change),
+          cambio_total = tail(cat_data$percentage, 1) - cat_data$percentage[1],
+          periodo = paste(min(cat_data$year), "-", max(cat_data$year))
+        )
+      }
+    }
+    changes_df <- do.call(rbind, changes)
+  } else {
+    changes_df <- data.frame()
+  }
+  
+  # Generate summary text
+  latest_year <- max(all_stats$year)
+  earliest_year <- min(all_stats$year)
+  latest_stats <- all_stats[all_stats$year == latest_year, ]
+  
+  # Sort categories by percentage for the latest year
+  latest_stats <- latest_stats[order(-latest_stats$percentage), ]
+  
+  # Create summary paragraph
+  summary_text <- paste0(
+    "Análisis de Uso de Suelo para la comuna de ", nombre_comuna, ":\n\n",
+    "Distribución actual (", latest_year, "):\n"
+  )
+  
+  # Add current distribution
+  for (i in 1:nrow(latest_stats)) {
+    summary_text <- paste0(
+      summary_text,
+      "- ", latest_stats$categoria[i], ": ",
+      sprintf("%.1f", latest_stats$percentage[i]), "% ",
+      "(", sprintf("%.1f", latest_stats$area_ha[i]), " ha)\n"
+    )
+  }
+  
+  # Add changes if available
+  if (nrow(changes_df) > 0) {
+    summary_text <- paste0(
+      summary_text,
+      "\nCambios principales (", earliest_year, "-", latest_year, "):\n"
+    )
+    
+    # Sort changes by absolute magnitude
+    changes_df <- changes_df[order(-abs(changes_df$cambio_total)), ]
+    
+    # Add top 3 changes
+    for (i in 1:min(3, nrow(changes_df))) {
+      direction <- ifelse(changes_df$cambio_total[i] > 0, "aumentó", "disminuyó")
+      summary_text <- paste0(
+        summary_text,
+        "- ", changes_df$categoria[i], " ", direction, " ",
+        sprintf("%.1f", abs(changes_df$cambio_total[i])),
+        "% (", sprintf("%.2f", changes_df$cambio_anual_promedio[i]), "% por año)\n"
+      )
+    }
+  }
+  
+  # Return results
+  return(list(
+    summary_text = summary_text,
+    area_stats = all_stats,
+    changes = changes_df
+  ))
+}
+
 # Example usage:
 # datos_comuna <- get_land_use_data("puerto varas")
-# plot <- plot_land_use_with_boundary("puerto varas", datos_comuna, 2023)  # For 2023 data
-# plot <- plot_land_use_with_boundary("puerto varas", datos_comuna, 2001)  # For 2001 data
+# plot<-plot_land_use_with_boundary(nombre_comuna = "puerto varas", land_use_data = datos_comuna, year = 2023)
+
+# analisis <- analyze_land_use_changes(datos_comuna, "Puerto Varas")
+# print(analisis$summary_text)  # Print summary text
+# View(analisis$area_stats)    # View detailed statistics
+# View(analisis$changes)       # View change rates
