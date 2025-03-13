@@ -78,30 +78,57 @@ calculate_relative_values <- function(data, periodo_referencia_ini, periodo_refe
   
   # Step 1: Filter the dataframe based on 'nombre_variable' and optionally 'modelo'
   if (modelo == "Todos") {
-    filtered_data <- data %>%
-      filter(variable == nombre_variable) %>% # Keep all models
-      group_by(corrida, modelo, año) %>% # Group by both corrida and modelo and año
-      summarise(year_mean_value = mean(valor, na.rm = TRUE)) %>%
-      ungroup()
+    # First filter the data
+    base_data <- data %>%
+      filter(variable == nombre_variable)
+    
+    # Then apply the appropriate calculation based on variable type
+    if(nombre_variable == "pr") {
+      # For precipitation: First sum by month, then by year
+      filtered_data <- base_data %>%
+        group_by(corrida, modelo, año, mes) %>%
+        summarise(monthly_sum = sum(valor, na.rm = TRUE), .groups = "drop") %>%
+        group_by(corrida, modelo, año) %>%
+        summarise(year_mean_value = sum(monthly_sum, na.rm = TRUE), .groups = "drop")
+    } else {
+      # For other variables: Calculate annual means
+      filtered_data <- base_data %>%
+        group_by(corrida, modelo, año) %>%
+        summarise(year_mean_value = mean(valor, na.rm = TRUE), .groups = "drop")
+    }
   } else {
-    filtered_data <- data %>%
-      filter(variable == nombre_variable & modelo == modelo) %>% # Filter by specific model
-      group_by(corrida, modelo, año) %>% # Group by both corrida and modelo and año
-      summarise(year_mean_value = mean(valor, na.rm = TRUE)) %>%
-      ungroup()
+    # First filter the data
+    base_data <- data %>%
+      filter(variable == nombre_variable & modelo == modelo)
+    
+    # Then apply the appropriate calculation based on variable type
+    if(nombre_variable == "pr") {
+      # For precipitation: First sum by month, then by year
+      filtered_data <- base_data %>%
+        group_by(corrida, modelo, año, mes) %>%
+        summarise(monthly_sum = sum(valor, na.rm = TRUE), .groups = "drop") %>%
+        group_by(corrida, modelo, año) %>%
+        summarise(year_mean_value = sum(monthly_sum, na.rm = TRUE), .groups = "drop")
+    } else {
+      # For other variables: Calculate annual means
+      filtered_data <- base_data %>%
+        group_by(corrida, modelo, año) %>%
+        summarise(year_mean_value = mean(valor, na.rm = TRUE), .groups = "drop")
+    }
   }
   
-  # Step 2: Calculate the mean value of 'valor' grouped by 'corrida' and 'modelo' for the reference period
+  # Step 2: Calculate the reference value (mean of annual values) grouped by 'corrida' and 'modelo'
   reference_means <- filtered_data %>%
     filter(año >= periodo_referencia_ini & año <= periodo_referencia_fin) %>% # Restrict to reference period
     group_by(corrida, modelo) %>% # Group by both corrida and modelo
-    summarise(reference_model_value = mean(year_mean_value, na.rm = TRUE)) %>%
+    summarise(
+      reference_model_value = mean(year_mean_value, na.rm = TRUE)  # Mean of annual values
+    ) %>%
     ungroup()
   
   # Step 3: Add a new column with the relative values
   # Se ocupa el valor absoluto del valor de referencia, de este modo
   # positivo == aumento con respecto a ref.
-  
   updated_data <- filtered_data %>%
     left_join(reference_means, by = c("corrida", "modelo")) %>% # Join by corrida and modelo
     mutate(valor_relativo_anual = (year_mean_value / abs(reference_model_value))) 
@@ -139,7 +166,7 @@ plot_time_series <- function(data, modelo, nombre_variable, periodo_referencia, 
   var_name_es <- variable_names_es[[nombre_variable]]
   
   # Prepare title with comuna name if provided
-  comuna_title <- ifelse(!is.null(nombre_comuna), paste0(" para la comuna ", nombre_comuna), "")
+  comuna_title <- ifelse(!is.null(nombre_comuna), nombre_comuna)
   
   # Step 2: Calculate summary statistics
   if (modelo == "Todos") {
@@ -158,24 +185,20 @@ plot_time_series <- function(data, modelo, nombre_variable, periodo_referencia, 
       geom_ribbon(aes(ymin = min_value, ymax = max_value), fill = "grey", alpha = 0.5) +
       geom_line(aes(y = mean_value), color = "blue", size = 1) +
       labs(
-        title = paste("Serie de tiempo de promedios anuales de ", 
-                     var_name_es, 
-                     ", todos los modelos GCM", 
-                     ", período de referencia ",
-                     periodo_referencia,
-                     comuna_title),
+        title = paste("Serie anual ",var_name_es,
+                     "periodo ref: ",
+                     periodo_referencia),
         x = "Años",
         y = paste0("Cambio relativo en ", var_name_es)
       ) +
-      scale_x_continuous(breaks = seq(2035, max(summary_data$año), by = 2)) +
-      scale_y_continuous(breaks = seq(floor(min(summary_data$min_value)), 
-                                    ceiling(max(summary_data$max_value)), 
-                                    by = 1)) +
+      scale_x_continuous(breaks = seq(2035, max(summary_data$año), by = 4)) +
+       # Define y-axis limits and breaks with safety checks
+ scale_y_continuous()+
       theme_minimal() +
       theme(
-        plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
-        axis.title = element_text(size = 12),
-        axis.text = element_text(size = 10)
+        plot.title = element_text(hjust = 0.5, size = 18, face = "bold"),
+        axis.title = element_text(size = 18),
+        axis.text = element_text(size = 16)
       )
   } else {
     # Check if there are multiple corrida values for the modelo
@@ -203,25 +226,20 @@ plot_time_series <- function(data, modelo, nombre_variable, periodo_referencia, 
         geom_ribbon(aes(ymin = lower_bound, ymax = upper_bound), fill = "grey", alpha = 0.5) +
         geom_line(aes(y = mean_value), color = "blue", size = 1) +
         labs(
-          title =  paste("Serie de tiempo de promedios anuales de ", 
-                         var_name_es, 
-                         ", modelo GCM ", 
-                         modelo, 
-                         ", período de referencia ",
-                         periodo_referencia,
-                         comuna_title),
+        title = paste("Serie anual ",var_name_es,
+                     "periodo ref: ",
+                     periodo_referencia),
           x = "Años",
           y = paste0("Cambio relativo en ", var_name_es) # Use Spanish variable name for y-axis label
         ) +
-        scale_x_continuous(breaks = seq(2035, max(summary_data$año), by = 2)) + # Show every 2 years
-        scale_y_continuous(breaks = seq(floor(min(summary_data$mean_value)), 
-                                        ceiling(max(summary_data$mean_value)), 
-                                        by = 1)) + # Show every 2 increments
+        scale_x_continuous(breaks = seq(2035, max(summary_data$año), by = 4)) + # Show every 2 years
+        # Define y-axis limits and breaks with safety checks
+ scale_y_continuous()+
         theme_minimal() +
         theme(
-          plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
-          axis.title = element_text(size = 12),
-          axis.text = element_text(size = 10)
+          plot.title = element_text(hjust = 0.5, size = 18, face = "bold"),
+          axis.title = element_text(size = 18),
+          axis.text = element_text(size = 16)
         )
     } else {
       # Single corrida: Plot only the mean line
@@ -236,25 +254,20 @@ plot_time_series <- function(data, modelo, nombre_variable, periodo_referencia, 
       p <- ggplot(summary_data, aes(x = año)) +
         geom_line(aes(y = mean_value), color = "blue", size = 1) +
         labs(
-          title =  paste("Serie de tiempo de promedios anuales de ", 
-                         var_name_es, 
-                         ", modelo GCM ", 
-                         modelo, 
-                         ", período de referencia ",
-                         periodo_referencia,
-                         comuna_title),
+          title = paste("Serie anual ",var_name_es,
+                     "periodo ref: ",
+                     periodo_referencia),
           x = "Años",
           y = paste0("Cambio relativo en ", var_name_es) # Use Spanish variable name for y-axis label
         ) +
-        scale_x_continuous(breaks = seq(2035, max(summary_data$año), by = 2)) + # Show every 2 years
-        scale_y_continuous(breaks = seq(floor(min(summary_data$mean_value)), 
-                                        ceiling(max(summary_data$mean_value)), 
-                                        by = 1)) + # Show every 2 increments
+        scale_x_continuous(breaks = seq(2035, max(summary_data$año), by = 4)) + # Show every 2 years
+         # Define y-axis limits and breaks with safety checks
+  scale_y_continuous()+
         theme_minimal() +
         theme(
-          plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
-          axis.title = element_text(size = 12),
-          axis.text = element_text(size = 10)
+          plot.title = element_text(hjust = 0.5, size = 18, face = "bold"),
+          axis.title = element_text(size = 18),
+          axis.text = element_text(size = 16)
         )
     }
   }
@@ -432,7 +445,7 @@ compute_summary_statistics <- function(data, modelo, nombre_variable, periodo_re
   var_unit <- variable_units[[nombre_variable]]
   
   # Prepare comuna text if provided
-  comuna_text <- ifelse(!is.null(nombre_comuna), paste0(" para la comuna ", nombre_comuna), "")
+  comuna_text <- ifelse(!is.null(nombre_comuna), paste0("comuna ", nombre_comuna), "")
   
   # Create the summary paragraph in Spanish
   if (modelo == "Todos") {
@@ -496,7 +509,7 @@ compute_summary_statistics <- function(data, modelo, nombre_variable, periodo_re
 # Ejemplo de uso
 
 #1) Procesar variable
-#nombre_variable <- "rsds"  # Nombre de la variable (input)
+#nombre_variable <- "pr"  # Nombre de la variable (input)
 #codigo_comuna <- "2201"           # Código de la comuna (input)
 #modelo = "ACCESS1-0"
 #resultado <- procesar_variable_comuna(nombre_variable, codigo_comuna, modelo)

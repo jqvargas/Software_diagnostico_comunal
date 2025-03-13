@@ -197,9 +197,12 @@ ui <- shinydashboardPlus::dashboardPage(
           column(width = 3,
             shinydashboard::box(
               title = "Panel de Control", width = NULL, solidHeader = TRUE, status = "primary",
-              uiOutput("land_use_comuna_selector"),  # Changed to dynamic UI
+              uiOutput("land_use_comuna_selector"),  # Dynamic comuna selector
               div(style = "margin-top: 20px;",
-                actionButton("generate_land_use", "Generar Análisis", 
+                actionButton("read_land_use", "Leer mapas uso de suelo", 
+                           class = "btn-info", style = "width: 100%; margin-bottom: 10px;"),
+                uiOutput("land_use_year_selector"),  # Dynamic year selector
+                actionButton("generate_land_use", "Generar Mapa", 
                            class = "btn-primary", style = "width: 100%; margin-bottom: 10px;"),
                 actionButton("save_land_use", "Guardar Resultados", 
                            class = "btn-success", style = "width: 100%;")
@@ -439,12 +442,15 @@ server <- function(input, output, session) {
     # Check if a plot has been generated
     req(processed_data())
     
-    # Get the selected comuna code
+    # Get the selected comuna info
     codigo_comuna <- processed_data()$codigo_comuna
     nombre_comuna <- processed_data()$nombre_comuna
     
-    # Create the folder structure
-    folder_path <- paste0(getwd(), "/BBDD/resultados/", codigo_comuna, "/", input$nombre_variable, "/", input$modelo, "/")
+    # Create the folder structure with the new path
+    folder_path <- paste0(getwd(), "/BBDD/resultados/proyecciones/", 
+                         nombre_comuna, "/",
+                         input$nombre_variable, "/",
+                         input$modelo, "/")
     
     # Create the directory if it doesn't exist
     if (!dir.exists(folder_path)) {
@@ -640,58 +646,80 @@ server <- function(input, output, session) {
     })
   })
 
-  # Process land use data and generate outputs
-  land_use_data <- eventReactive(input$generate_land_use, {
+  # Reactive value to store land use data
+  land_use_data <- reactiveVal(NULL)
+  available_years <- reactiveVal(NULL)
+
+  # Read land use data when button is clicked
+  observeEvent(input$read_land_use, {
     req(input$land_use_comuna)
     
-    output$land_use_logs <- renderText("Procesando datos de uso de suelo...")
+    output$land_use_logs <- renderText("Leyendo datos de uso de suelo...")
     
     # Get the data
     tryCatch({
-      # Print debug information
-      print(paste("Processing comuna:", input$land_use_comuna))
-      
       data <- get_land_use_data(input$land_use_comuna)
+      land_use_data(data)
       
-      # Get the most recent year
+      # Extract available years from IPCC columns
       ipcc_cols <- sort(names(data)[grep("^SUB_IPCC", names(data))])
-      latest_year <- as.numeric(paste0("20", substr(tail(ipcc_cols, 1), 9, 10)))
+      years <- as.numeric(paste0("20", substr(ipcc_cols, 9, 10)))
+      available_years(years)
       
-      # Generate analysis
-      analysis <- analyze_land_use_changes(data, input$land_use_comuna)
-      
-      # Generate plot
-      plot <- plot_land_use_with_boundary(input$land_use_comuna, data, latest_year)
-      
-      output$land_use_logs <- renderText("Procesamiento completado exitosamente!")
-      
-      list(
-        data = data,
-        analysis = analysis,
-        plot = plot,
-        year = latest_year
-      )
+      output$land_use_logs <- renderText("Datos leídos exitosamente. Seleccione un año para generar el análisis.")
     }, error = function(e) {
       output$land_use_logs <- renderText(paste("Error:", e$message))
-      return(NULL)
     })
   })
-  
-  # Render the land use plot
-  output$land_use_plot <- renderPlot({
-    req(land_use_data())
-    land_use_data()$plot
+
+  # Dynamic year selector UI
+  output$land_use_year_selector <- renderUI({
+    req(available_years())
+    years <- available_years()
+    
+    selectInput("land_use_year", "Seleccionar año para mapear:",
+                choices = years,
+                selected = max(years))
   })
-  
-  # Render the summary text
-  output$land_use_summary <- renderText({
-    req(land_use_data())
-    land_use_data()$analysis$summary_text
+
+  # Reactive values to store current plot and analysis
+  current_land_use_plot <- reactiveVal(NULL)
+  current_land_use_analysis <- reactiveVal(NULL)
+
+  # Process land use data and generate outputs
+  observeEvent(input$generate_land_use, {
+    req(land_use_data(), input$land_use_year)
+    
+    output$land_use_logs <- renderText("Generando mapa...")
+    
+    tryCatch({
+      # Generate plot with selected year
+      plot <- plot_land_use_with_boundary(
+        nombre_comuna = input$land_use_comuna,
+        land_use_data = land_use_data(),
+        year = as.numeric(input$land_use_year)
+      )
+      
+      # Generate analysis
+      analysis <- analyze_land_use_changes(land_use_data(), input$land_use_comuna)
+      
+      # Store current plot and analysis
+      current_land_use_plot(plot)
+      current_land_use_analysis(analysis)
+      
+      # Update outputs
+      output$land_use_plot <- renderPlot({ plot })
+      output$land_use_summary <- renderText({ analysis$summary_text })
+      output$land_use_logs <- renderText("Mapa generado exitosamente!")
+      
+    }, error = function(e) {
+      output$land_use_logs <- renderText(paste("Error:", e$message))
+    })
   })
-  
+
   # Save land use results
   observeEvent(input$save_land_use, {
-    req(land_use_data(), input$land_use_comuna)
+    req(current_land_use_plot(), current_land_use_analysis(), input$land_use_comuna, input$land_use_year)
     
     # Create the folder structure
     folder_path <- paste0(getwd(), "/BBDD/resultados/usos_suelo/", input$land_use_comuna, "/")
@@ -701,13 +729,13 @@ server <- function(input, output, session) {
     }
     
     # Save plot
-    plot_file <- paste0(folder_path, "mapa_uso_suelo_", land_use_data()$year, ".png")
-    ggsave(plot_file, plot = land_use_data()$plot, 
+    plot_file <- paste0(folder_path, "mapa_uso_suelo_", input$land_use_year, ".png")
+    ggsave(plot_file, plot = current_land_use_plot(), 
            width = 12, height = 8, units = "in", dpi = 300)
     
     # Save summary
-    summary_file <- paste0(folder_path, "resumen_uso_suelo.txt")
-    writeLines(land_use_data()$analysis$summary_text, summary_file)
+    summary_file <- paste0(folder_path, "resumen_uso_suelo_", input$land_use_year, ".txt")
+    writeLines(current_land_use_analysis()$summary_text, summary_file)
     
     output$land_use_logs <- renderText(paste("Resultados guardados en:", folder_path))
   })

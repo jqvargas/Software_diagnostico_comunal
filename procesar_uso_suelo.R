@@ -218,23 +218,18 @@ get_available_comunas_land_use <- function() {
 #' Plot land use data with comuna boundary
 #' @param nombre_comuna Character string with the comuna name
 #' @param land_use_data sf object with land use data (output from get_land_use_data)
-#' @param year Integer with the year to plot (2001, 2012, 2013, 2015, 2016, 2017, 2019, 2021, or 2023)
+#' @param year Integer with the year to plot
 #' @return ggplot object with the plot
 plot_land_use_with_boundary <- function(nombre_comuna, land_use_data, year) {
-  # Validate year input
-  valid_years <- c(2001, 2012, 2013, 2015, 2016, 2017, 2019, 2021, 2023)
-  if (!year %in% valid_years) {
-    stop(paste("Año inválido. Los años disponibles son:", paste(valid_years, collapse = ", ")))
-  }
-  
   # Convert year to IPCC column name
   year_suffix <- sprintf("%02d", year %% 100)
   ipcc_col <- paste0("SUB_IPCC", year_suffix)
   
   # Check if the column exists in the data
   if (!ipcc_col %in% names(land_use_data)) {
-    available_years <- gsub("SUB_IPCC", "", names(land_use_data)[grep("^SUB_IPCC", names(land_use_data))])
-    available_years <- paste0("20", available_years)
+    # Get available years for error message
+    available_cols <- names(land_use_data)[grep("^SUB_IPCC", names(land_use_data))]
+    available_years <- sort(as.numeric(paste0("20", substr(available_cols, 9, 10))))
     stop(paste("No hay datos para el año", year, 
                "\nAños disponibles:", paste(available_years, collapse = ", ")))
   }
@@ -253,7 +248,7 @@ plot_land_use_with_boundary <- function(nombre_comuna, land_use_data, year) {
     stop(paste("No se encontró el límite de la comuna:", nombre_comuna))
   }
   
-  # Define color mapping for IPCC categories (matching exact names in the data)
+  # Define color mapping for IPCC categories
   color_mapping <- c(
     "Áreas Desprovistas de Vegetación" = "#A9A9A9",
     "Asentamientos" = "#D73027",
@@ -271,15 +266,11 @@ plot_land_use_with_boundary <- function(nombre_comuna, land_use_data, year) {
   # Get unique categories in the data
   categories <- unique(land_use_data[[ipcc_col]])
   
-  # Print available categories for debugging
-  print("Categorías presentes en los datos:")
-  print(categories)
-  
   # Print categories that don't have a color assigned
   missing_categories <- setdiff(categories, names(color_mapping))
   if (length(missing_categories) > 0) {
-    print("ADVERTENCIA: Las siguientes categorías no tienen color asignado:")
-    print(missing_categories)
+    warning("Las siguientes categorías no tienen color asignado y usarán colores por defecto:\n",
+            paste(missing_categories, collapse = ", "))
   }
   
   # Create the plot
@@ -291,24 +282,22 @@ plot_land_use_with_boundary <- function(nombre_comuna, land_use_data, year) {
     # Customize the appearance
     theme_minimal() +
     theme(
-      plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
-      legend.position = "right",  # Changed to right for better visibility
-      legend.title = element_text(size = 10),
-      legend.text = element_text(size = 8)
+      plot.title = element_text(hjust = 0.5, size = 24, face = "bold"),
+      axis.title = element_text(size = 24, face = "bold"),
+      axis.text = element_text(size = 22),
+      legend.position = "right",
+      legend.title = element_text(size = 18, face = "bold"),
+      legend.text = element_text(size = 16)
     ) +
     # Add labels
     labs(
-      title = paste("Uso de Suelo -", nombre_comuna, "-", year),
-      fill = paste("Categoría IPCC", year)
+      title = paste("Uso de Suelo en la comuna de", nombre_comuna, "al año", year),
+      fill = "Categoría IPCC"
     ) +
     # Use the predefined color mapping
     scale_fill_manual(values = color_mapping, drop = FALSE)
   
-  # Force the plot to be displayed
-  print(plot)
-  
-  # Return the plot object
-  invisible(plot)
+  return(plot)
 }
 
 #' Analyze land use changes over time

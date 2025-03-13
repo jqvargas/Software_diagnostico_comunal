@@ -302,17 +302,17 @@ plot_serie_temporal <- function(datos, variable, tipo_temp = NULL, nombre_comuna
     ) +
     theme_minimal() +
     theme(
-      plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
-      axis.title = element_text(size = 24),  # Aumentar tamaño de títulos de ejes
-      axis.text = element_text(size = 20),   # Aumentar tamaño de números en ejes
+      plot.title = element_text(hjust = 0.5, size = 18, face = "bold"),
+      axis.title = element_text(size = 16),  # Aumentar tamaño de títulos de ejes
+      axis.text = element_text(size = 16),   # Aumentar tamaño de números en ejes
       axis.text.x = element_text(angle = 45, hjust = 1)  # Rotar etiquetas del eje x
     ) +
     # Ajustar escala de años para mostrar cada 5 años
     scale_x_continuous(
       breaks = seq(
-        ceiling(min(datos$Year)/5)*5,  # Redondear al próximo múltiplo de 5
-        floor(2024/5)*5,               # Redondear al múltiplo de 5 anterior
-        by = 5
+        ceiling(min(datos$Year)/4)*4,  # Redondear al próximo múltiplo de 5
+        floor(2024/4)*4,               # Redondear al múltiplo de 5 anterior
+        by = 4
       )
     )
   

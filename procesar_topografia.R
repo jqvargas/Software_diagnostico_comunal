@@ -191,59 +191,68 @@ if (region_num < 8 || region_num == 13 || region_num == 15) {
 
 create_elevation_plot <- function(raster_masked, comuna_boundaries) {
   # Define a custom color palette
-elevation_colors <- colorRampPalette(c(
-  "#2B3A67",  # 0–100m: Deep blue (deep water)
-  "#4A90E2",  # 100–150m: Light blue (shallow water)
-  "#63B8EE",  # 150–175m: Very light blue (transition out of water)
-  "#87CEEB",  # 175–200m: Pale blue (coastal water/land boundary)
-  "#B0E0E6",  # 200–225m: Very pale blue (final transition out of water)
-  "#A8D5BA",  # 225–250m: Muted green-blue (coastal transition)
-  "#98D1A5",  # 250–275m: Soft green-blue (further land transition)
-  "#76C776",  # 275–350m: Soft green (lowlands)
-  "#B2D180",  # 350–500m: Brighter green (transition to foothills)
-  "#E6D38B",  # 500–700m: Light yellow (foothills)
-  "#D9A66C",  # 700–900m: Warm beige-brown (mid-altitude)
-  "#C47A4F",  # 900–1,200m: Orange-brown (higher mid-altitude)
-  "#A0522D",  # 1,200–1,500m: Rich brown (mountains)
-  "#8B7E74",  # 1,500–2,000m: Rocky gray (high peaks)
-  "#D0D0D0",  # 2,000–2,500m: Lighter gray (snowline transition)
-  "#F0F0F0",  # 2,500–3,000m: Very light gray (near snowline)
-  "#FFFFFF"   # 3,000–4,000m: White (snow-capped peaks)
-))(256)
+  elevation_colors <- colorRampPalette(c(
+    "#2B3A67",  # 0–100m: Deep blue (deep water)
+    "#4A90E2",  # 100–150m: Light blue (shallow water)
+    "#63B8EE",  # 150–175m: Very light blue (transition out of water)
+    "#87CEEB",  # 175–200m: Pale blue (coastal water/land boundary)
+    "#B0E0E6",  # 200–225m: Very pale blue (final transition out of water)
+    "#A8D5BA",  # 225–250m: Muted green-blue (coastal transition)
+    "#98D1A5",  # 250–275m: Soft green-blue (further land transition)
+    "#76C776",  # 275–350m: Soft green (lowlands)
+    "#B2D180",  # 350–500m: Brighter green (transition to foothills)
+    "#E6D38B",  # 500–700m: Light yellow (foothills)
+    "#D9A66C",  # 700–900m: Warm beige-brown (mid-altitude)
+    "#C47A4F",  # 900–1,200m: Orange-brown (higher mid-altitude)
+    "#A0522D",  # 1,200–1,500m: Rich brown (mountains)
+    "#8B7E74",  # 1,500–2,000m: Rocky gray (high peaks)
+    "#D0D0D0",  # 2,000–2,500m: Lighter gray (snowline transition)
+    "#F0F0F0",  # 2,500–3,000m: Very light gray (near snowline)
+    "#FFFFFF"   # 3,000–4,000m: White (snow-capped peaks)
+  ))(256)
+
   # Start a new plot
   plot.new()
 
+  # Set up custom parameters for bigger, bold text
+  par(cex.main = 1.8,    # Bigger title
+      cex.lab = 1.4,     # Bigger axis labels
+      cex.axis = 1.2,    # Bigger axis text
+      font.main = 2,     # Bold title
+      font.lab = 2)      # Bold axis labels
+
   # Plot the masked raster with the custom palette
   plot(raster_masked, 
-       main = "Elevation Map with Comuna Boundary",
+       main = "Mapa de Elevación   -   Altura (m s. n. m.)",
        col = elevation_colors,
-       colNA = "#F0F0F0",  # Light gray for masked areas
-       axes = TRUE)
+       colNA = "#F0F0F0",
+       xlab = "Longitud",
+       ylab = "Latitud",
+       axes = TRUE) # Text size)
 
   # Add the comuna boundary with a black line
   plot(st_geometry(comuna_boundaries), 
        add = TRUE, 
        border = "#6d6868", 
-       lwd = 3)
+       lwd = 2)
 
-  # Add a legend for elevation
-  legend("bottomright",
-         title = "Elevation",
-         legend = c("Low", "Medium", "High"),
-         fill = c("#B0E0E6", "#7CFC00", "#FFFFFF"),
-         bty = "n",  # No legend box
-         cex = 0.8)  # Adjust legend text size
-
-  # Add a scale bar (in kilometers)
-  scalebar(d = 10,  # Length in km
-           type = "bar", 
-           below = "km",
-           xy = c(extent(raster_masked)@xmin + 5000,  # Adjust position
-                  extent(raster_masked)@ymin + 5000))
+  # Add a legend for elevation with title - bigger and bold text
+ # legend("bottomright",
+  #       title = "Altura (m s. n. m.)",
+  #       legend = c("Baja", "Media", "Alta"),
+  #       fill = c("#B0E0E6", "#7CFC00", "#FFFFFF"),
+  ##       cex = 1.2,        # Bigger legend text
+  #       title.cex = 1.4,  # Bigger legend title
+   #      title.font = 2,   # Bold legend title
+  #       text.font = 2,    # Bold legend text
+  #       inset = c(0.02, 0.02))
 
 
   # Capture the plot and save it as an object
   p <- recordPlot()
+
+  # Reset the graphical parameters to default
+  par(cex.main = 1, cex.lab = 1, cex.axis = 1, font.main = 1, font.lab = 1)
 
   # Return the plot object
   return(p)

@@ -53,29 +53,43 @@ for (archivo in archivos) {
 }
 
 # Agrupar por año y código nacional, y calcular suma anual de precipitación
-datos_anuales <- datos_combinados %>%
-  group_by(Codigo_nacional, Year) %>%
-  summarise(
-    pp_anual = sum(pp_month, na.rm = TRUE)  # Suma de precipitación mensual
-  ) %>%
-  arrange(Codigo_nacional, Year)
+#datos_anuales <- datos_combinados %>%
+#  group_by(Codigo_nacional, Year) %>%
+ # summarise(
+#    pp_anual = sum(pp_month, na.rm = TRUE)  # Suma de precipitación mensual
+#  ) %>%
+#  arrange(Codigo_nacional, Year)
 
 # Unir con metadata
-datos_anuales_con_metadata <- datos_anuales %>%
+datos_anuales_con_metadata <- datos_combinados %>%
   left_join(metadata, by = "Codigo_nacional")
 
-# Calcular promedios por comuna y año
-datos_comunales <- datos_anuales_con_metadata %>%
-  group_by(Year, COD_COM, COD_REG, COD_PROV, NOM_REG, NOM_PROV, NOM_COM) %>%
+# Calcular máximos por comuna y año
+# Ocupo el máximo porque en el caso de la precipitación hay estaciones que tienen muy mala medición, 
+#y miden siempre 0,01 milimetros, esto baja el promedio y sesgaría los datos. Exploando la data nos 
+#damos cuenta que generalmente las estaciones que miden la mayor cantida de precipitaciones son las 
+#que están funcionando correctamente 
+
+datos_comunales_mensuales <- datos_anuales_con_metadata %>%
+  group_by(Year, Month, COD_COM, COD_REG, COD_PROV, NOM_REG, NOM_PROV, NOM_COM) %>%
   summarise(
-    pp_acumulado_anual_comunal = mean(pp_anual, na.rm = TRUE)  # Promedio de precipitación anual por comuna
+    pp_month = median(pp_month, na.rm = TRUE)  
   ) %>%
   ungroup() %>%
   arrange(COD_COM, Year)
 
+datos_comunales_anuales <- datos_comunales_mensuales  %>%
+  group_by(Year, COD_COM, COD_REG, COD_PROV, NOM_REG, NOM_PROV, NOM_COM) %>%
+  summarise(
+    pp_acumulado_anual_comunal = sum(pp_month, na.rm = TRUE)  
+  ) %>%
+  ungroup() %>%
+  arrange(COD_COM, Year)
+
+
 # Guardar los resultados
 output_path <- paste0(getwd(), "/BBDD/historico/pp/precipitacion_comunal.csv")
-write_csv(datos_comunales, output_path)
+write_csv(datos_comunales_anuales, output_path)
 
 print(paste("Datos procesados y guardados en:", output_path))
 print("Resumen de los datos comunales:")
