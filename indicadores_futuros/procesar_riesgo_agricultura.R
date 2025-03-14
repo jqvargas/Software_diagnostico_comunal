@@ -8,7 +8,7 @@ library(ggplot2)
 library(stringr)
 
 # Lista de sectores productivos válidos
-sectores_productivos <- c(
+sectores_productivos_agricola <- c(
   "almendras",
   "bovinos_carne",
   "bovinos_leche",
@@ -28,7 +28,7 @@ sectores_productivos <- c(
 #' Función para convertir nombre de comuna a código
 #' @param nombre_comuna Nombre de la comuna
 #' @return Código de la comuna
-convertir_nombre_a_codigo <- function(nombre_comuna) {
+convertir_nombre_a_codigo_agricola <- function(nombre_comuna) {
   # Ruta al archivo de datos agrícolas que contiene los códigos de comuna
   ruta_archivo <- "BBDD/ARCLIM/riesgo/Agricultura/ARCLIM_agricultura.xlsx"
   
@@ -50,7 +50,7 @@ convertir_nombre_a_codigo <- function(nombre_comuna) {
 #' Función para cargar y procesar datos de riesgo agrícola
 #' @param ruta_archivo Ruta al archivo Excel
 #' @return Lista con metadatos y datos procesados
-cargar_datos_riesgo <- function(ruta_archivo) {
+cargar_datos_riesgo_agricola <- function(ruta_archivo) {
   print("Cargando datos de riesgo agrícola...")
   
   # Cargar las hojas del archivo Excel
@@ -79,7 +79,7 @@ cargar_datos_riesgo <- function(ruta_archivo) {
 #' @param metadatos DataFrame con metadatos
 #' @param sector_productivo Sector productivo seleccionado
 #' @return Lista con descripciones por categoría
-obtener_descripciones <- function(metadatos, sector_productivo) {
+obtener_descripciones_agricola <- function(metadatos, sector_productivo) {
   # Función auxiliar para obtener y limpiar descripción
   obtener_descripcion <- function(tipo) {
     desc <- metadatos %>%
@@ -109,7 +109,7 @@ obtener_descripciones <- function(metadatos, sector_productivo) {
 #' @param datos DataFrame con datos
 #' @param sector_productivo Sector productivo seleccionado
 #' @return Lista con estadísticas por categoría
-calcular_estadisticas <- function(datos, sector_productivo) {
+calcular_estadisticas_agricola <- function(datos, sector_productivo) {
   # Función auxiliar para calcular estadísticas de un indicador
   calcular_stats <- function(patron_columna) {
     col_idx <- grep(patron_columna, colnames(datos))
@@ -145,14 +145,14 @@ calcular_estadisticas <- function(datos, sector_productivo) {
 #' @param codigo_comuna Código de la comuna
 #' @param sector_productivo Sector productivo seleccionado
 #' @return Lista con valores de indicadores y estadísticas
-obtener_valores_comuna <- function(datos, codigo_comuna, sector_productivo) {
+obtener_valores_comuna_agricola <- function(datos, codigo_comuna, sector_productivo) {
   # Validar que el sector productivo sea válido
-  if (!sector_productivo %in% sectores_productivos) {
-    stop(paste("Sector productivo no válido. Los sectores válidos son:", paste(sectores_productivos, collapse = ", ")))
+  if (!sector_productivo %in% sectores_productivos_agricola) {
+    stop(paste("Sector productivo no válido. Los sectores válidos son:", paste(sectores_productivos_agricola, collapse = ", ")))
   }
   
   # Calcular estadísticas para todos los indicadores
-  stats <- calcular_estadisticas(datos, sector_productivo)
+  stats <- calcular_estadisticas_agricola(datos, sector_productivo)
   
   # Filtrar datos para la comuna
   fila_comuna <- datos %>% filter(COD_COMUNA == codigo_comuna)
@@ -199,7 +199,7 @@ obtener_valores_comuna <- function(datos, codigo_comuna, sector_productivo) {
 #' @param metadatos DataFrame con metadatos
 #' @param sector_productivo Sector productivo seleccionado
 #' @return Lista con unidades por categoría
-obtener_unidades <- function(metadatos, sector_productivo) {
+obtener_unidades_agricola <- function(metadatos, sector_productivo) {
   obtener_unidad <- function(tipo) {
     metadatos %>%
       filter(grepl(sector_productivo, `ID Atributo`) & grepl(tipo, `ID Atributo`)) %>%
@@ -221,20 +221,20 @@ obtener_unidades <- function(metadatos, sector_productivo) {
 #' @param nombre_comuna Nombre de la comuna
 #' @param sector_productivo Sector productivo seleccionado
 #' @return Lista con el informe y datos para visualización
-generar_informe_riesgo <- function(nombre_comuna, sector_productivo) {
+generar_informe_riesgo_agricola <- function(nombre_comuna, sector_productivo) {
   print(paste0("Generando informe de riesgo agrícola para ", nombre_comuna, " - ", sector_productivo))
   
   # Convertir nombre de comuna a código
-  codigo_comuna <- convertir_nombre_a_codigo(nombre_comuna)
+  codigo_comuna <- convertir_nombre_a_codigo_agricola(nombre_comuna)
   
   # Cargar datos
   ruta_archivo <- "BBDD/ARCLIM/riesgo/Agricultura/ARCLIM_agricultura.xlsx"
-  datos_cargados <- cargar_datos_riesgo(ruta_archivo)
+  datos_cargados <- cargar_datos_riesgo_agricola(ruta_archivo)
   
   # Obtener descripciones, unidades y valores
-  descripciones <- obtener_descripciones(datos_cargados$metadatos, sector_productivo)
-  unidades <- obtener_unidades(datos_cargados$metadatos, sector_productivo)
-  valores <- obtener_valores_comuna(datos_cargados$datos, codigo_comuna, sector_productivo)
+  descripciones <- obtener_descripciones_agricola(datos_cargados$metadatos, sector_productivo)
+  unidades <- obtener_unidades_agricola(datos_cargados$metadatos, sector_productivo)
+  valores <- obtener_valores_comuna_agricola(datos_cargados$datos, codigo_comuna, sector_productivo)
   
   # Función auxiliar para formatear sección del informe
   formatear_seccion <- function(tipo, valor_info, descripcion, unidad = "") {
@@ -332,7 +332,7 @@ generar_informe_riesgo <- function(nombre_comuna, sector_productivo) {
 #' Función para generar gráfico de indicadores
 #' @param datos_visualizacion DataFrame con datos para visualización
 #' @return Objeto ggplot
-generar_grafico_indicadores <- function(datos_visualizacion) {
+generar_grafico_indicadores_agricola <- function(datos_visualizacion) {
   p <- ggplot(datos_visualizacion, aes(x = reorder(indicador, valor), y = valor)) +
     geom_bar(stat = "identity", fill = "steelblue") +
     coord_flip() +
@@ -352,6 +352,6 @@ generar_grafico_indicadores <- function(datos_visualizacion) {
 }
 
 # Ejemplo de uso
-# resultado <- generar_informe_riesgo("Lonquimay", "bovinos_leche")
+# resultado <- generar_informe_riesgo_agricola("Lonquimay", "bovinos_leche")
 # print(resultado$informe_html)
-# print(generar_grafico_indicadores(resultado$datos_visualizacion)) 
+# print(generar_grafico_indicadores_agricola(resultado$datos_visualizacion)) 

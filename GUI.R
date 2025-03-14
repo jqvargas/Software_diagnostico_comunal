@@ -5,6 +5,7 @@ source(paste0(getwd(), "/procesar_uso_suelo.R"))  # Add source for land use proc
 source(paste0(getwd(), "/procesar_topografia.R"))  # Add source for topography processing
 source(paste0(getwd(), "/indicadores_futuros/procesar_riesgo_agricultura.R"))  # Add source for agricultural risk processing
 source(paste0(getwd(), "/indicadores_futuros/procesar_riesgo_incendio_bosque.R"))  # Add source for forest fire risk processing
+source(paste0(getwd(), "/indicadores_futuros/procesar_amenazas.R"))  # Add source for climate threats processing
 
 # Explicitly import select from dplyr
 select <- dplyr::select
@@ -59,7 +60,8 @@ ui <- shinydashboardPlus::dashboardPage(
       shinydashboard::menuSubItem("Usos de la Tierra", tabName = "land_use_data", icon = icon("tree")),
       shinydashboard::menuSubItem("Topografía", tabName = "topography_data", icon = icon("mountain")),
       shinydashboard::menuSubItem("Riesgo Agrícola", tabName = "agricultural_risk", icon = icon("tractor")),
-      shinydashboard::menuSubItem("Riesgo de Incendios Forestales", tabName = "forest_fire_risk", icon = icon("fire"))
+      shinydashboard::menuSubItem("Riesgo de Incendios Forestales", tabName = "forest_fire_risk", icon = icon("fire")),
+      shinydashboard::menuSubItem("Amenazas Climáticas", tabName = "climate_threats", icon = icon("cloud"))
     )
   ),
   body = shinydashboard::dashboardBody(
@@ -423,6 +425,57 @@ ui <- shinydashboardPlus::dashboardPage(
               title = "Registros", width = NULL, height = "200px", solidHeader = TRUE, status = "warning",
               div(style = "height: 130px; overflow-y: auto;",
                 textOutput("forest_logs")
+              )
+            )
+          )
+        )
+      ),
+
+      # Climate Threats Tab
+      shinydashboard::tabItem(tabName = "climate_threats",
+        # First row: Control panel, Report, and Map
+        fluidRow(
+          # Control panel (1/4 of width)
+          column(width = 3,
+            shinydashboard::box(
+              title = "Panel de Control", width = NULL, solidHeader = TRUE, status = "primary",
+              uiOutput("threats_variable_selector"),  # Dynamic variable selector
+              uiOutput("threats_comuna_selector"),  # Dynamic comuna selector
+              div(style = "margin-top: 20px;",
+                actionButton("generate_threats_report", "Generar Informe", 
+                           class = "btn-primary", style = "width: 100%; margin-bottom: 10px;"),
+                actionButton("save_threats_report", "Guardar Resultados", 
+                           class = "btn-success", style = "width: 100%;")
+              )
+            )
+          ),
+          
+          # Report (1/2 of width)
+          column(width = 6,
+            shinydashboard::box(
+              title = "Informe de Amenazas Climáticas", width = NULL, solidHeader = TRUE, status = "info",
+              div(style = "height: 500px; overflow-y: auto;",
+                htmlOutput("threats_report")
+              )
+            )
+          ),
+          
+          # Map (1/4 of width)
+          column(width = 3,
+            shinydashboard::box(
+              title = "Mapa de Comuna", width = NULL, solidHeader = TRUE, status = "info",
+              plotOutput("threats_spatial_plot", height = "300px")
+            )
+          )
+        ),
+        
+        # Logs row
+        fluidRow(
+          column(width = 12,
+            shinydashboard::box(
+              title = "Registros", width = NULL, height = "200px", solidHeader = TRUE, status = "warning",
+              div(style = "height: 130px; overflow-y: auto;",
+                textOutput("threats_logs")
               )
             )
           )
@@ -991,7 +1044,7 @@ server <- function(input, output, session) {
     
     tryCatch({
       # Generate report and visualization
-      result <- generar_informe_riesgo(input$agri_comuna, input$agri_sector)
+      result <- generar_informe_riesgo_agricola(input$agri_comuna, input$agri_sector)
       
       # Store current report and plot
       current_agri_report(result)
@@ -1200,6 +1253,142 @@ server <- function(input, output, session) {
            width = 8, height = 8, units = "in", dpi = 300)
     
     output$forest_logs <- renderText(paste("Resultados guardados en:", folder_path))
+  })
+
+  # Climate Threats Section
+  
+  # Update variable selector with available variables
+  output$threats_variable_selector <- renderUI({
+    tryCatch({
+      # Get available variables from the threats data
+      ruta_archivo <- "BBDD/ARCLIM/indicadores_amenazas/amenazas_comunas_annual.xlsx"
+      variables_df <- read_excel(ruta_archivo, sheet = "VARIABLES")
+      available_variables <- sort(unique(variables_df$Nombre))
+      
+      selectInput("threats_variable", "Variable:",
+                 choices = available_variables,
+                 selected = NULL)
+    }, error = function(e) {
+      div(
+        style = "color: red;",
+        "Error al cargar variables de amenazas"
+      )
+    })
+  })
+  
+  # Update comuna selector with available comunas
+  output$threats_comuna_selector <- renderUI({
+    tryCatch({
+      # Get available comunas from the threats data
+      ruta_archivo <- "BBDD/ARCLIM/indicadores_amenazas/amenazas_comunas_annual.xlsx"
+      features_df <- read_excel(ruta_archivo, sheet = "FEATURES")
+      available_comunas <- sort(unique(features_df$NOM_COMUNA))
+      
+      selectInput("threats_comuna", "Nombre de Comuna:",
+                 choices = available_comunas,
+                 selected = NULL)
+    }, error = function(e) {
+      div(
+        style = "color: red;",
+        "Error al cargar comunas"
+      )
+    })
+  })
+  
+  # Reactive values to store current report and plot
+  current_threats_report <- reactiveVal(NULL)
+  
+  # Process threats data and generate outputs
+  observeEvent(input$generate_threats_report, {
+    req(input$threats_comuna, input$threats_variable)
+    
+    output$threats_logs <- renderText("Generando informe de amenazas climáticas...")
+    
+    tryCatch({
+      # Generate report
+      result <- generar_informe_amenazas(
+        nombre_comuna = input$threats_comuna,
+        variable = input$threats_variable
+      )
+      
+      # Store current report
+      current_threats_report(result)
+      
+      # Update outputs
+      output$threats_report <- renderUI({ HTML(result$informe_html) })
+      
+      # Generate and display spatial plot
+      output$threats_spatial_plot <- renderPlot({
+        # Get comuna boundaries
+        selected_polygon <- comunas_shp %>%
+          filter(tolower(Comuna) == tolower(input$threats_comuna))
+        
+        if (nrow(selected_polygon) == 0) {
+          return(ggplot() +
+            annotate("text", x = 0, y = 0, 
+                    label = "No se encontró la comuna en el mapa",
+                    size = 5) +
+            theme_void())
+        }
+        
+        ggplot() +
+          geom_sf(data = selected_polygon, fill = "lightblue", color = "darkblue") +
+          theme_minimal() +
+          theme(
+            plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+            axis.text = element_blank(),
+            axis.ticks = element_blank(),
+            panel.grid = element_blank(),
+            plot.margin = margin(0, 0, 0, 0, "pt")
+          ) +
+          ggtitle(input$threats_comuna) +
+          coord_sf(expand = FALSE)
+      })
+      
+      output$threats_logs <- renderText("Informe generado exitosamente!")
+      
+    }, error = function(e) {
+      output$threats_logs <- renderText(paste("Error:", e$message))
+    })
+  })
+  
+  # Save threats results
+  observeEvent(input$save_threats_report, {
+    req(current_threats_report(), input$threats_comuna, input$threats_variable)
+    
+    # Create the folder structure
+    folder_path <- paste0(getwd(), "/BBDD/resultados/amenazas/", 
+                         input$threats_comuna, "/")
+    
+    if (!dir.exists(folder_path)) {
+      dir.create(folder_path, recursive = TRUE)
+    }
+    
+    # Save report as HTML
+    report_file <- paste0(folder_path, "informe_amenazas_", 
+                         gsub(" ", "_", input$threats_variable), ".html")
+    writeLines(current_threats_report()$informe_html, report_file)
+    
+    # Save spatial plot
+    spatial_plot_file <- paste0(folder_path, "mapa_comuna.png")
+    selected_polygon <- comunas_shp %>%
+      filter(tolower(Comuna) == tolower(input$threats_comuna))
+    
+      geom_sf(data = selected_polygon, fill = "lightblue", color = "darkblue") +
+      theme_minimal() +
+      theme(
+        plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        panel.grid = element_blank()
+      ) +
+      ggtitle(input$threats_comuna) +
+      coord_sf(expand = FALSE)
+    
+    ggsave(spatial_plot_file, plot = spatial_plot,
+           width = 8, height = 8, units = "in", dpi = 300)
+    
+    output$threats_logs <- renderText(paste("Resultados guardados en:", folder_path))
   })
 }
 
