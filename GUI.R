@@ -3,6 +3,7 @@ source(paste0(getwd(), "/indicadores_futuros/procesar_arclim.R"))
 source(paste0(getwd(), "/procesar_historico.R"))  # Add source for historical processing
 source(paste0(getwd(), "/procesar_uso_suelo.R"))  # Add source for land use processing
 source(paste0(getwd(), "/procesar_topografia.R"))  # Add source for topography processing
+source(paste0(getwd(), "/indicadores_futuros/procesar_riesgo_agricultura.R"))  # Add source for agricultural risk processing
 
 # Explicitly import select from dplyr
 select <- dplyr::select
@@ -55,7 +56,8 @@ ui <- shinydashboardPlus::dashboardPage(
       shinydashboard::menuSubItem("Diagnóstico Clima Histórico", tabName = "historical_data", icon = icon("clock")),
       shinydashboard::menuSubItem("Diagnóstico Clima Futuro", tabName = "future_data", icon = icon("arrow-right")),
       shinydashboard::menuSubItem("Usos de la Tierra", tabName = "land_use_data", icon = icon("tree")),
-      shinydashboard::menuSubItem("Topografía", tabName = "topography_data", icon = icon("mountain"))
+      shinydashboard::menuSubItem("Topografía", tabName = "topography_data", icon = icon("mountain")),
+      shinydashboard::menuSubItem("Riesgo Agrícola", tabName = "agricultural_risk", icon = icon("tractor"))
     )
   ),
   body = shinydashboard::dashboardBody(
@@ -292,6 +294,73 @@ ui <- shinydashboardPlus::dashboardPage(
               solidHeader = TRUE, status = "warning",
               div(style = "height: 230px; overflow-y: auto;",
                 textOutput("topo_logs")
+              )
+            )
+          )
+        )
+      ),
+
+      # Agricultural Risk Tab
+      shinydashboard::tabItem(tabName = "agricultural_risk",
+        # First row: Control panel, Report, and Map
+        fluidRow(
+          # Control panel (1/4 of width)
+          column(width = 3,
+            shinydashboard::box(
+              title = "Panel de Control", width = NULL, solidHeader = TRUE, status = "primary",
+              selectInput("agri_sector", "Sector Productivo:", 
+                        choices = c(
+                          "Almendras" = "almendras",
+                          "Bovinos Carne" = "bovinos_carne",
+                          "Bovinos Leche" = "bovinos_leche",
+                          "Cereza" = "cereza",
+                          "Frejol" = "frejol",
+                          "Maíz" = "maiz",
+                          "Manzana Roja" = "manzana_roja",
+                          "Nueces" = "nueces",
+                          "Ovinos" = "ovinos",
+                          "Papa Riego" = "papa_riego",
+                          "Papa Secano" = "papa_secano",
+                          "Pradera" = "pradera",
+                          "Trigo Riego" = "trigo_riego",
+                          "Trigo Secano" = "trigo_secano"
+                        )),
+              uiOutput("agri_comuna_selector"),  # Dynamic comuna selector
+              div(style = "margin-top: 20px;",
+                actionButton("generate_agri_report", "Generar Informe", 
+                           class = "btn-primary", style = "width: 100%; margin-bottom: 10px;"),
+                actionButton("save_agri_report", "Guardar Resultados", 
+                           class = "btn-success", style = "width: 100%;")
+              )
+            )
+          ),
+          
+          # Report (1/2 of width)
+          column(width = 6,
+            shinydashboard::box(
+              title = "Informe de Riesgo Agrícola", width = NULL, solidHeader = TRUE, status = "info",
+              div(style = "height: 500px; overflow-y: auto;",
+                htmlOutput("agri_report")
+              )
+            )
+          ),
+          
+          # Map (1/4 of width)
+          column(width = 3,
+            shinydashboard::box(
+              title = "Mapa de Comuna", width = NULL, solidHeader = TRUE, status = "info",
+              plotOutput("agri_spatial_plot", height = "300px")
+            )
+          )
+        ),
+        
+        # Logs row
+        fluidRow(
+          column(width = 12,
+            shinydashboard::box(
+              title = "Registros", width = NULL, height = "200px", solidHeader = TRUE, status = "warning",
+              div(style = "height: 130px; overflow-y: auto;",
+                textOutput("agri_logs")
               )
             )
           )
@@ -818,6 +887,129 @@ server <- function(input, output, session) {
     writeLines(topo_data()$summary, summary_file)
     
     output$topo_logs <- renderText(paste("Resultados guardados en:", folder_path))
+  })
+
+  # Agricultural Risk Section
+  
+  # Update comuna selector with available comunas
+  output$agri_comuna_selector <- renderUI({
+    tryCatch({
+      # Get available comunas from the ARCLIM agriculture data
+      ruta_archivo <- "BBDD/ARCLIM/riesgo/Agricultura/ARCLIM_agricultura.xlsx"
+      datos <- read_excel(ruta_archivo, sheet = "DATOS")
+      available_comunas <- sort(unique(datos$NOM_COMUNA))
+      
+      if (length(available_comunas) > 0) {
+        selectInput("agri_comuna", "Nombre de Comuna:",
+                   choices = available_comunas,
+                   selected = NULL)
+      } else {
+        div(
+          style = "color: red;",
+          "No se encontraron comunas con datos de riesgo agrícola disponibles"
+        )
+      }
+    }, error = function(e) {
+      div(
+        style = "color: red;",
+        paste("Error al cargar comunas:", e$message)
+      )
+    })
+  })
+  
+  # Reactive values to store current report and plot
+  current_agri_report <- reactiveVal(NULL)
+  current_agri_plot <- reactiveVal(NULL)
+  
+  # Process agricultural risk data and generate outputs
+  observeEvent(input$generate_agri_report, {
+    req(input$agri_comuna, input$agri_sector)
+    
+    output$agri_logs <- renderText("Generando informe de riesgo agrícola...")
+    
+    tryCatch({
+      # Generate report and visualization
+      result <- generar_informe_riesgo(input$agri_comuna, input$agri_sector)
+      
+      # Store current report and plot
+      current_agri_report(result)
+      
+      # Update outputs
+      output$agri_report <- renderUI({ HTML(result$informe_html) })
+      
+      # Generate and display spatial plot
+      output$agri_spatial_plot <- renderPlot({
+        # Get comuna boundaries
+        selected_polygon <- comunas_shp %>%
+          filter(tolower(Comuna) == tolower(input$agri_comuna))
+        
+        if (nrow(selected_polygon) == 0) {
+          return(ggplot() +
+            annotate("text", x = 0, y = 0, 
+                    label = "No se encontró la comuna en el mapa",
+                    size = 5) +
+            theme_void())
+        }
+        
+        ggplot() +
+          geom_sf(data = selected_polygon, fill = "lightblue", color = "darkblue") +
+          theme_minimal() +
+          theme(
+            plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+            axis.text = element_blank(),
+            axis.ticks = element_blank(),
+            panel.grid = element_blank(),
+            plot.margin = margin(0, 0, 0, 0, "pt")
+          ) +
+          ggtitle(input$agri_comuna) +
+          coord_sf(expand = FALSE)
+      })
+      
+      output$agri_logs <- renderText("Informe generado exitosamente!")
+      
+    }, error = function(e) {
+      output$agri_logs <- renderText(paste("Error:", e$message))
+    })
+  })
+  
+  # Save agricultural risk results
+  observeEvent(input$save_agri_report, {
+    req(current_agri_report(), input$agri_comuna, input$agri_sector)
+    
+    # Create the folder structure
+    folder_path <- paste0(getwd(), "/BBDD/resultados/riesgo_agricola/", 
+                         input$agri_comuna, "/",
+                         input$agri_sector, "/")
+    
+    if (!dir.exists(folder_path)) {
+      dir.create(folder_path, recursive = TRUE)
+    }
+    
+    # Save report as HTML
+    report_file <- paste0(folder_path, "informe_riesgo_agricola.html")
+    writeLines(current_agri_report()$informe_html, report_file)
+    
+    # Save spatial plot
+    spatial_plot_file <- paste0(folder_path, "mapa_comuna.png")
+    selected_polygon <- comunas_shp %>%
+      filter(tolower(Comuna) == tolower(input$agri_comuna))
+    
+    spatial_plot <- ggplot() +
+      geom_sf(data = selected_polygon, fill = "lightblue", color = "darkblue") +
+      theme_minimal() +
+      theme(
+        plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        panel.grid = element_blank()
+      ) +
+      ggtitle(input$agri_comuna) +
+      coord_sf(expand = FALSE)
+    
+    ggsave(spatial_plot_file, plot = spatial_plot,
+           width = 8, height = 8, units = "in", dpi = 300)
+    
+    output$agri_logs <- renderText(paste("Resultados guardados en:", folder_path))
   })
 }
 
