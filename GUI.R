@@ -4,6 +4,7 @@ source(paste0(getwd(), "/procesar_historico.R"))  # Add source for historical pr
 source(paste0(getwd(), "/procesar_uso_suelo.R"))  # Add source for land use processing
 source(paste0(getwd(), "/procesar_topografia.R"))  # Add source for topography processing
 source(paste0(getwd(), "/indicadores_futuros/procesar_riesgo_agricultura.R"))  # Add source for agricultural risk processing
+source(paste0(getwd(), "/indicadores_futuros/procesar_riesgo_incendio_bosque.R"))  # Add source for forest fire risk processing
 
 # Explicitly import select from dplyr
 select <- dplyr::select
@@ -57,7 +58,8 @@ ui <- shinydashboardPlus::dashboardPage(
       shinydashboard::menuSubItem("Diagnóstico Clima Futuro", tabName = "future_data", icon = icon("arrow-right")),
       shinydashboard::menuSubItem("Usos de la Tierra", tabName = "land_use_data", icon = icon("tree")),
       shinydashboard::menuSubItem("Topografía", tabName = "topography_data", icon = icon("mountain")),
-      shinydashboard::menuSubItem("Riesgo Agrícola", tabName = "agricultural_risk", icon = icon("tractor"))
+      shinydashboard::menuSubItem("Riesgo Agrícola", tabName = "agricultural_risk", icon = icon("tractor")),
+      shinydashboard::menuSubItem("Riesgo de Incendios Forestales", tabName = "forest_fire_risk", icon = icon("fire"))
     )
   ),
   body = shinydashboard::dashboardBody(
@@ -361,6 +363,66 @@ ui <- shinydashboardPlus::dashboardPage(
               title = "Registros", width = NULL, height = "200px", solidHeader = TRUE, status = "warning",
               div(style = "height: 130px; overflow-y: auto;",
                 textOutput("agri_logs")
+              )
+            )
+          )
+        )
+      ),
+
+      # Forest Fire Risk Tab
+      shinydashboard::tabItem(tabName = "forest_fire_risk",
+        # First row: Control panel, Report, and Map
+        fluidRow(
+          # Control panel (1/4 of width)
+          column(width = 3,
+            shinydashboard::box(
+              title = "Panel de Control", width = NULL, solidHeader = TRUE, status = "primary",
+              selectInput("forest_type", "Tipo de Bosque:", 
+                        choices = c(
+                          "Bosque Nativo" = "bnativos",
+                          "Plantaciones" = "plantaciones"
+                        )),
+              selectInput("forest_period", "Período:", 
+                        choices = c(
+                          "Presente" = "pres",
+                          "Futuro" = "fut"
+                        )),
+              uiOutput("forest_comuna_selector"),  # Dynamic comuna selector
+              div(style = "margin-top: 20px;",
+                actionButton("generate_forest_report", "Generar Informe", 
+                           class = "btn-primary", style = "width: 100%; margin-bottom: 10px;"),
+                actionButton("save_forest_report", "Guardar Resultados", 
+                           class = "btn-success", style = "width: 100%;")
+              )
+            )
+          ),
+          
+          # Report (1/2 of width)
+          column(width = 6,
+            shinydashboard::box(
+              title = "Informe de Riesgo de Incendios Forestales", width = NULL, solidHeader = TRUE, status = "info",
+              div(style = "height: 500px; overflow-y: auto;",
+                htmlOutput("forest_report")
+              )
+            )
+          ),
+          
+          # Map (1/4 of width)
+          column(width = 3,
+            shinydashboard::box(
+              title = "Mapa de Comuna", width = NULL, solidHeader = TRUE, status = "info",
+              plotOutput("forest_spatial_plot", height = "300px")
+            )
+          )
+        ),
+        
+        # Logs row
+        fluidRow(
+          column(width = 12,
+            shinydashboard::box(
+              title = "Registros", width = NULL, height = "200px", solidHeader = TRUE, status = "warning",
+              div(style = "height: 130px; overflow-y: auto;",
+                textOutput("forest_logs")
               )
             )
           )
@@ -1010,6 +1072,134 @@ server <- function(input, output, session) {
            width = 8, height = 8, units = "in", dpi = 300)
     
     output$agri_logs <- renderText(paste("Resultados guardados en:", folder_path))
+  })
+
+  # Forest Fire Risk Section
+  
+  # Update comuna selector with available comunas
+  output$forest_comuna_selector <- renderUI({
+    tryCatch({
+      # Get available comunas from the forest fire risk data
+      ruta_archivo <- "BBDD/ARCLIM/riesgo/Bosques_nativos/ARCLIM_incendios_bosques_nativos_comunas.xlsx"
+      datos <- read_excel(ruta_archivo, sheet = "DATOS")
+      available_comunas <- sort(unique(datos$NOM_COMUNA))
+      
+      if (length(available_comunas) > 0) {
+        selectInput("forest_comuna", "Nombre de Comuna:",
+                   choices = available_comunas,
+                   selected = NULL)
+      } else {
+        div(
+          style = "color: red;",
+          "No se encontraron comunas con datos de riesgo de incendios forestales disponibles"
+        )
+      }
+    }, error = function(e) {
+      div(
+        style = "color: red;",
+        paste("Error al cargar comunas:", e$message)
+      )
+    })
+  })
+  
+  # Reactive values to store current report and plot
+  current_forest_report <- reactiveVal(NULL)
+  current_forest_plot <- reactiveVal(NULL)
+  
+  # Process forest fire risk data and generate outputs
+  observeEvent(input$generate_forest_report, {
+    req(input$forest_comuna, input$forest_type, input$forest_period)
+    
+    output$forest_logs <- renderText("Generando informe de riesgo de incendios forestales...")
+    
+    tryCatch({
+      # Generate report using the forest fire risk function
+      result <- generar_informe_riesgo(
+        nombre_comuna = input$forest_comuna,
+        tipo_bosque = input$forest_type,
+        periodo = input$forest_period
+      )
+      
+      # Store current report
+      current_forest_report(result)
+      
+      # Update outputs
+      output$forest_report <- renderUI({ HTML(result$informe_html) })
+      
+      # Generate and display spatial plot
+      output$forest_spatial_plot <- renderPlot({
+        # Get comuna boundaries
+        selected_polygon <- comunas_shp %>%
+          filter(tolower(Comuna) == tolower(input$forest_comuna))
+        
+        if (nrow(selected_polygon) == 0) {
+          return(ggplot() +
+            annotate("text", x = 0, y = 0, 
+                    label = "No se encontró la comuna en el mapa",
+                    size = 5) +
+            theme_void())
+        }
+        
+        ggplot() +
+          geom_sf(data = selected_polygon, fill = "lightblue", color = "darkblue") +
+          theme_minimal() +
+          theme(
+            plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+            axis.text = element_blank(),
+            axis.ticks = element_blank(),
+            panel.grid = element_blank(),
+            plot.margin = margin(0, 0, 0, 0, "pt")
+          ) +
+          ggtitle(input$forest_comuna) +
+          coord_sf(expand = FALSE)
+      })
+      
+      output$forest_logs <- renderText("Informe generado exitosamente!")
+      
+    }, error = function(e) {
+      output$forest_logs <- renderText(paste("Error:", e$message))
+    })
+  })
+  
+  # Save forest fire risk results
+  observeEvent(input$save_forest_report, {
+    req(current_forest_report(), input$forest_comuna, input$forest_type, input$forest_period)
+    
+    # Create the folder structure
+    folder_path <- paste0(getwd(), "/BBDD/resultados/riesgo_incendios/", 
+                         input$forest_comuna, "/",
+                         input$forest_type, "/",
+                         input$forest_period, "/")
+    
+    if (!dir.exists(folder_path)) {
+      dir.create(folder_path, recursive = TRUE)
+    }
+    
+    # Save report as HTML
+    report_file <- paste0(folder_path, "informe_riesgo_incendios.html")
+    writeLines(current_forest_report()$informe_html, report_file)
+    
+    # Save spatial plot
+    spatial_plot_file <- paste0(folder_path, "mapa_comuna.png")
+    selected_polygon <- comunas_shp %>%
+      filter(tolower(Comuna) == tolower(input$forest_comuna))
+    
+    spatial_plot <- ggplot() +
+      geom_sf(data = selected_polygon, fill = "lightblue", color = "darkblue") +
+      theme_minimal() +
+      theme(
+        plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        panel.grid = element_blank()
+      ) +
+      ggtitle(input$forest_comuna) +
+      coord_sf(expand = FALSE)
+    
+    ggsave(spatial_plot_file, plot = spatial_plot,
+           width = 8, height = 8, units = "in", dpi = 300)
+    
+    output$forest_logs <- renderText(paste("Resultados guardados en:", folder_path))
   })
 }
 
