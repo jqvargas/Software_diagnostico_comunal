@@ -103,7 +103,7 @@ generar_informe_amenazas <- function(nombre_comuna, variable) {
     presente <- datos$resultados$Presente
     secciones_html <- c(secciones_html, sprintf('
       <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
-        <h3 style="color: #34495e;">Situación Actual</h3>
+        <h3 style="color: #34495e;">Situación Actual (Período 1980-2010)</h3>
         <p>Valor actual: <strong>%.2f %s</strong></p>
         <p>Contexto regional y nacional:</p>
         <ul>
@@ -129,7 +129,7 @@ generar_informe_amenazas <- function(nombre_comuna, variable) {
     futuro <- datos$resultados$Futuro
     secciones_html <- c(secciones_html, sprintf('
       <div style="background-color: #e9ecef; padding: 15px; border-radius: 5px; margin: 10px 0;">
-        <h3 style="color: #34495e;">Proyección Futura</h3>
+        <h3 style="color: #34495e;">Proyección Futura (Período 2035-2065)</h3>
         <p>Valor proyectado: <strong>%.2f %s</strong></p>
         <p>Contexto regional y nacional:</p>
         <ul>
@@ -158,7 +158,7 @@ generar_informe_amenazas <- function(nombre_comuna, variable) {
     
     secciones_html <- c(secciones_html, sprintf('
       <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
-        <h3 style="color: #34495e;">Cambio Proyectado</h3>
+        <h3 style="color: #34495e;">Cambio Proyectado (Entre 1980-2010 y 2035-2065)</h3>
         <p>Cambio esperado: <strong>%.2f %s</strong></p>
         <p>Contexto regional y nacional:</p>
         <ul>
@@ -187,7 +187,9 @@ generar_informe_amenazas <- function(nombre_comuna, variable) {
       %s
       <div style="background-color: #e9ecef; padding: 15px; border-radius: 5px; margin: 10px 0;">
         <p style="font-size: 0.9em; color: #666;">
-          <strong>Nota sobre los promedios:</strong><br>
+          <strong>Nota sobre los períodos y promedios:</strong><br>
+          - El período presente corresponde al período histórico 1980-2010.<br>
+          - El período futuro corresponde a proyecciones climáticas para 2035-2065.<br>
           - El promedio regional considera solo las comunas de la región %s.<br>
           - El promedio nacional considera todas las comunas del país.
         </p>
