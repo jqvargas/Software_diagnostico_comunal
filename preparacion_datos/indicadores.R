@@ -1,8 +1,4 @@
 # Script para procesar datos históricos de indicadores
-# Cargar librerías necesarias
-library(dplyr)
-library(readr)
-
 # Definir la ruta del archivo
 archivo_ipe <- paste0(getwd(), "/BBDD/historico/indicadores/IPE_consolidado_1979_2025_2.csv")
 

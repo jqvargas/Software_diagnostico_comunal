@@ -1,18 +1,4 @@
 # Script para generar tabla resumen de medidas en formato HTML y PNG
-# Instalar paquetes si es necesario
-if (!require("readxl")) install.packages("readxl")
-if (!require("dplyr")) install.packages("dplyr")
-if (!require("webshot2")) install.packages("webshot2")
-if (!require("fs")) install.packages("fs")
-if (!require("stringi")) install.packages("stringi")
-
-# Cargar paquetes
-library(readxl)
-library(dplyr)
-library(webshot2)
-library(fs)
-library(stringi)
-
 # Función para normalizar texto - remover acentos y convertir a minúsculas
 normalize_text <- function(text) {
   if (is.na(text)) return("")

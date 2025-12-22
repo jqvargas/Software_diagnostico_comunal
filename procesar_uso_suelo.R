@@ -1,7 +1,5 @@
 # Script para procesar datos de uso de suelo
-library(sf)
-library(dplyr)
-library(readr)
+
 
 # Load metadata once at script level for efficiency
 METADATA <- NULL

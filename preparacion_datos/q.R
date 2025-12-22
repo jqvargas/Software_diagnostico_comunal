@@ -1,8 +1,4 @@
 # Script para procesar datos históricos de caudal
-# Cargar librerías necesarias
-library(dplyr)
-library(readr)
-
 # Definir la ruta del archivo
 archivo_q <- paste0(getwd(), "/BBDD/historico/q/q_DGA_mensual_1989_2025_2.csv")
 

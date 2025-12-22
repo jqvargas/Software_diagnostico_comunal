@@ -1,10 +1,5 @@
 # Script para procesar datos de topografía
-library(sf)
-library(raster)
-library(dplyr)
-library(ggplot2)
-library(viridis)
-library(RColorBrewer)
+
 
 #' Get region number for a given comuna
 #' @param nombre_comuna Character string with the comuna name

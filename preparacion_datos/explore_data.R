@@ -1,6 +1,4 @@
 # Load required libraries
-library(sf)
-library(dplyr)
 
 # Read the shapefile
 comunas_sf <- st_read("BBDD/divisiones_chile/Comunas/comunas.shp")

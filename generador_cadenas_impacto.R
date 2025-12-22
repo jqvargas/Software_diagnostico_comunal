@@ -1,20 +1,5 @@
 # Script para generar reportes HTML de cadenas de impacto desde un archivo Excel usando R
-# Basado en la estructura de generador_fichas.R
-# Instalar paquetes si es necesario
-if (!require("readxl")) install.packages("readxl")
-if (!require("stringr")) install.packages("stringr")
-if (!require("stringi")) install.packages("stringi")
-if (!require("dplyr")) install.packages("dplyr")
-if (!require("webshot2")) install.packages("webshot2")
-if (!require("fs")) install.packages("fs")
 
-# Cargar paquetes
-library(readxl)
-library(stringr)
-library(stringi)
-library(dplyr)
-library(webshot2)
-library(fs)
 
 # Función para normalizar texto - remover acentos y convertir a minúsculas
 normalize_text <- function(text) {

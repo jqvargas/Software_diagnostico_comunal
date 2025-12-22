@@ -1,7 +1,4 @@
 # Script para procesar datos históricos de precipitación
-# Cargar librerías necesarias
-library(dplyr)
-library(readr)
 
 # Definir la ruta base
 base_path <- paste0(getwd(), "/BBDD/historico/pp")

@@ -1,7 +1,5 @@
 # Script para procesar datos históricos de indicadores de evapotranspiración
-# Cargar librerías necesarias
-library(dplyr)
-library(readr)
+
 
 # Definir la ruta del archivo
 archivo_ipee <- paste0(getwd(), "/BBDD/historico/indicadores/IPEE_consolidado_1979_2025_2.csv")

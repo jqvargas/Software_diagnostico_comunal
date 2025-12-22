@@ -1,23 +1,5 @@
 # Script para generar un reporte integral de análisis de la base de datos de medidas
-# Instalar paquetes si es necesario
-if (!require("readxl")) install.packages("readxl")
-if (!require("dplyr")) install.packages("dplyr")
-if (!require("stringr")) install.packages("stringr") 
-if (!require("knitr")) install.packages("knitr")
-if (!require("stringi")) install.packages("stringi")
-if (!require("ggplot2")) install.packages("ggplot2")
-if (!require("fs")) install.packages("fs")
-if (!require("rmarkdown")) install.packages("rmarkdown")
 
-# Cargar paquetes
-library(readxl)
-library(dplyr)
-library(stringr)
-library(knitr)
-library(stringi)
-library(ggplot2)
-library(fs)
-library(rmarkdown)
 
 # Función para normalizar texto
 normalize_text <- function(text) {

@@ -1,8 +1,5 @@
-# Script para procesar datos de amenazas climáticas a nivel comunal
-library(readxl)
-library(dplyr)
-library(tidyr)
-library(stringr)
+# Explicitly import select from dplyr
+select <- dplyr::select
 
 #' Obtiene los valores de amenazas para una comuna específica y todas las categorías
 #' @param nombre_comuna Nombre de la comuna

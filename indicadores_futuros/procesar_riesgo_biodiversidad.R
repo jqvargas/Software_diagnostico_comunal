@@ -1,12 +1,5 @@
 # Script para procesar indicadores de riesgo para biodiversidad
 
-# Cargar librerías necesarias
-library(readxl)
-library(dplyr)
-library(tidyr)
-library(ggplot2)
-library(stringr)
-
 # Lista de tipos de análisis válidos
 tipos_biodiversidad <- c(
   "flora_temperatura" = "floramat",

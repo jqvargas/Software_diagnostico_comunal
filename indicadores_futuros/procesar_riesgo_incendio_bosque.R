@@ -1,8 +1,4 @@
 # Cargar librerías necesarias
-library(readxl)
-library(dplyr)
-library(tidyr)
-library(stringr)
 
 # Función para obtener los datos de riesgo de incendios forestales
 obtener_datos_incendios <- function() {

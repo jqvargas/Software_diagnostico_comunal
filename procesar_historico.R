@@ -1,8 +1,5 @@
 # Script para procesar y visualizar datos históricos de clima
-# Cargar librerías necesarias
-library(dplyr)
-library(ggplot2)
-library(readr)
+
 
 # Función para obtener las comunas disponibles
 get_available_comunas <- function(variable) {

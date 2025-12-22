@@ -1,11 +1,5 @@
 # Script para procesar indicadores de riesgo agrícola
 
-# Cargar librerías necesarias
-library(readxl)
-library(dplyr)
-library(tidyr)
-library(ggplot2)
-library(stringr)
 
 # Lista de sectores productivos válidos
 sectores_productivos_agricola <- c(

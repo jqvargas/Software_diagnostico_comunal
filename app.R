@@ -1,3 +1,21 @@
+# Load all required packages
+library(shiny)
+library(dplyr)
+library(ggplot2)
+library(sf)
+library(raster)
+library(viridis)
+library(RColorBrewer)
+library(readr)
+library(readxl)
+library(stringr)
+library(stringi)
+library(knitr)
+library(fs)
+library(rmarkdown)
+library(webshot2)
+
+
 ####### Source data
 source(paste0(getwd(), "/indicadores_futuros/procesar_arclim.R"))
 source(paste0(getwd(), "/procesar_historico.R"))  # Add source for historical processing
@@ -1393,4 +1411,7 @@ server <- function(input, output, session) {
 }
 
 # Run the application
-shinyApp(ui, server)
+# Run the application (only if running directly, not via runApp)
+if (!exists("shiny_running")) {
+  shinyApp(ui, server)
+}

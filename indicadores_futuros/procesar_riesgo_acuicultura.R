@@ -1,12 +1,5 @@
 # Script para procesar indicadores de riesgo de acuicultura
 
-# Cargar librerías necesarias
-library(readxl)
-library(dplyr)
-library(tidyr)
-library(ggplot2)
-library(stringr)
-
 #' Función para cargar y procesar datos de riesgo acuícola de agua dulce
 #' @param ruta_archivo Ruta al archivo Excel
 #' @return Lista con datos procesados
